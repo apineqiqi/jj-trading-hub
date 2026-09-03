@@ -16,7 +16,7 @@ export function EditorModal({ target, onClose, onSave }: {
     const value = target.value;
     if (isPosition) {
       const p = value as Position | undefined;
-      setForm({ id: p?.id ?? crypto.randomUUID(), symbol: p?.symbol ?? '', name: p?.name ?? '', shares: String(p?.shares ?? ''), cost: String(p?.cost ?? ''), price: String(p?.price ?? '') });
+      setForm({ id: p?.id ?? crypto.randomUUID(), symbol: p?.symbol ?? '', name: p?.name ?? '', owner: p?.owner ?? '', shares: String(p?.shares ?? ''), cost: String(p?.cost ?? ''), price: String(p?.price ?? '') });
     } else {
       const w = value as WatchItem | undefined;
       setForm({ symbol: w?.symbol ?? '', name: w?.name ?? '', price: String(w?.price ?? ''), changePct: String(w?.changePct ?? ''), group: w?.group ?? '', score: String(w?.score ?? 5), state: w?.state ?? '观察', support: w?.support ?? '', trigger: w?.trigger ?? '', invalidation: w?.invalidation ?? '', note: w?.note ?? '' });
@@ -26,7 +26,7 @@ export function EditorModal({ target, onClose, onSave }: {
   const set = (key: string, value: string) => setForm(current => ({ ...current, [key]: value }));
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (isPosition) onSave({ id: form.id, symbol: form.symbol.trim(), name: form.name.trim(), shares: Number(form.shares), cost: Number(form.cost), price: Number(form.price) });
+    if (isPosition) onSave({ id: form.id, symbol: form.symbol.trim(), name: form.name.trim(), owner: form.owner.trim() || '未标记', shares: Number(form.shares), cost: Number(form.cost), price: Number(form.price) });
     else onSave({ symbol: form.symbol.trim(), name: form.name.trim(), price: Number(form.price), changePct: Number(form.changePct), group: form.group.trim(), score: Number(form.score), state: form.state as SignalState, support: form.support.trim(), trigger: form.trigger.trim(), invalidation: form.invalidation.trim(), note: form.note.trim() });
   };
 
@@ -37,7 +37,7 @@ export function EditorModal({ target, onClose, onSave }: {
       <div className="modal-head"><div><span className="eyebrow">LOCAL WORKSPACE</span><h3>{target.value ? '编辑' : '添加'}{isPosition ? '持仓' : '观察标的'}</h3></div><button type="button" className="icon-btn" onClick={onClose}><X size={19}/></button></div>
       <div className="form-grid">
         {input('股票代码', 'symbol')}{input('股票名称', 'name')}
-        {isPosition ? <>{input('持仓数量', 'shares', 'number')}{input('成本价', 'cost', 'number')}{input('当前价', 'price', 'number')}</> : <>
+        {isPosition ? <>{input('归属用户', 'owner')}{input('持仓数量', 'shares', 'number')}{input('成本价', 'cost', 'number')}{input('当前价', 'price', 'number')}</> : <>
           {input('板块', 'group')}{input('当前价', 'price', 'number')}{input('涨跌幅 %', 'changePct', 'number')}{input('评分（0–10）', 'score', 'number')}
           <label><span>状态</span><select value={form.state ?? '观察'} onChange={e => set('state', e.target.value)}><option>转强</option><option>观察</option><option>等待确认</option><option>防守</option></select></label>
           {input('支撑位', 'support', 'text', false)}{input('触发条件', 'trigger', 'text', false)}{input('失效条件', 'invalidation', 'text', false)}

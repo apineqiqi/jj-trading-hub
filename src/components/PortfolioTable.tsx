@@ -28,7 +28,7 @@ export function PortfolioTable({ items, onAdd, onEdit, onDelete }: {
         const pnl = item.reportedPnl ?? (item.price - item.cost) * item.shares;
         const pnlPct = item.reportedReturnPct ?? (item.cost ? (item.price / item.cost - 1) * 100 : 0);
         return <div className="position-grid position-row" key={item.id}>
-          <span><b>{item.name}</b><small>{item.symbol}<em className="owner-tag">{item.owner?.trim() || '未标记'}</em></small></span>
+          <span><b>{item.name}{item.quoteUpdatedAt && <i className="live-mark">行情</i>}</b><small>{item.symbol}<em className="owner-tag">{item.owner?.trim() || '未标记'}</em></small></span>
           <span>{item.shares}</span>
           <span><small>¥{price.format(item.cost)}</small>¥{price.format(item.price)}</span>
           <span>¥{money.format(marketValue)}</span>

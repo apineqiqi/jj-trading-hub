@@ -12,6 +12,7 @@ export interface WatchItem {
   trigger?: string;
   invalidation?: string;
   note: string;
+  quoteUpdatedAt?: string;
 }
 
 export interface DecisionRule {
@@ -33,6 +34,7 @@ export interface Position {
   reportedMarketValue?: number;
   reportedPnl?: number;
   reportedReturnPct?: number;
+  quoteUpdatedAt?: string;
 }
 
 export interface AccountSnapshot {

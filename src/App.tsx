@@ -5,7 +5,7 @@ import { EditorModal } from './components/EditorModal';
 import { PortfolioTable } from './components/PortfolioTable';
 import { StatCard } from './components/StatCard';
 import { WatchTable } from './components/WatchTable';
-import { decisions, watchlist as initialWatchlist } from './data/mock';
+import { accountSnapshot, decisions, initialPositions, watchlist as initialWatchlist } from './data/mock';
 import { usePersistentState } from './hooks/usePersistentState';
 import type { Position, WatchItem } from './types/market';
 
@@ -14,13 +14,16 @@ type EditorTarget = { kind: 'position'; value?: Position } | { kind: 'watch'; va
 
 export default function App() {
   const [view, setView] = useState<View>('overview');
-  const [positions, setPositions] = usePersistentState<Position[]>('jj-trading-v02-positions', []);
+  const [positions, setPositions] = usePersistentState<Position[]>('jj-trading-v03-positions', initialPositions);
   const [watchlist, setWatchlist] = usePersistentState<WatchItem[]>('jj-trading-v02-watchlist', initialWatchlist);
   const [editor, setEditor] = useState<EditorTarget | null>(null);
 
-  const portfolio = useMemo(() => positions.reduce((total, item) => total + item.price * item.shares, 0), [positions]);
-  const pnl = useMemo(() => positions.reduce((total, item) => total + (item.price - item.cost) * item.shares, 0), [positions]);
+  const portfolio = useMemo(() => positions.reduce((total, item) => total + (item.reportedMarketValue ?? item.price * item.shares), 0), [positions]);
+  const pnl = useMemo(() => positions.reduce((total, item) => total + (item.reportedPnl ?? (item.price - item.cost) * item.shares), 0), [positions]);
+  const totalAssets = portfolio + accountSnapshot.availableCash;
+  const positionPct = totalAssets ? portfolio / totalAssets * 100 : 0;
   const attackSignals = watchlist.filter(item => item.state === '转强').length;
+  const money = (value: number) => `¥${value.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   const saveEditor = (value: Position | WatchItem) => {
     if (editor?.kind === 'position') {
@@ -38,7 +41,7 @@ export default function App() {
 
   return <div className="app-shell">
     <header>
-      <div><div className="brand-line"><span className="eyebrow">JJ PERSONAL TRADING OS</span><span className="version-badge">V0.2</span></div><h1>JJ 交易中枢</h1></div>
+      <div><div className="brand-line"><span className="eyebrow">JJ PERSONAL TRADING OS</span><span className="version-badge">V0.3</span></div><h1>JJ 交易中枢</h1></div>
       <button className="icon-btn" title="提醒"><BellRing size={20}/></button>
     </header>
 
@@ -52,12 +55,15 @@ export default function App() {
     <main>
       {view === 'overview' && <>
         <section className="hero card">
-          <div><span className="eyebrow">2026-09-03 收盘</span><h2>设备 / 测试 / 激光强于光模块核心</h2><p>今日不是 CPO 整体 β 行情，联讯与炬光相对占优；寒武纪仍处等待确认阶段。</p></div>
+          <div><span className="eyebrow">{accountSnapshot.asOf}</span><h2>设备 / 测试 / 激光强于光模块核心</h2><p>已同步 JJ 最新账户快照。今日不是 CPO 整体 β 行情，联讯与炬光相对占优；寒武纪仍处等待确认阶段。</p></div>
           <div className="hero-score"><span>今日环境</span><strong>分化</strong></div>
         </section>
         <section className="stats">
-          <StatCard title="持仓市值" value={positions.length ? `¥${Math.round(portfolio).toLocaleString()}` : '—'} sub={positions.length ? `${positions.length} 个持仓` : '等待录入持仓'} icon={<BriefcaseBusiness size={18}/>}/>
-          <StatCard title="浮动盈亏" value={positions.length ? `${pnl >= 0 ? '+' : '-'}¥${Math.abs(Math.round(pnl)).toLocaleString()}` : '—'} sub="依据手动更新的现价" icon={<Activity size={18}/>}/>
+          <StatCard title="总资产" value={money(totalAssets)} sub={accountSnapshot.asOf} icon={<BriefcaseBusiness size={18}/>}/>
+          <StatCard title="持仓市值" value={money(portfolio)} sub={`${positions.length} 个持仓`} icon={<BriefcaseBusiness size={18}/>}/>
+          <StatCard title="可用现金" value={money(accountSnapshot.availableCash)} sub="账户可用余额" icon={<Activity size={18}/>}/>
+          <StatCard title="浮动盈亏" value={`${pnl >= 0 ? '+' : '-'}${money(Math.abs(pnl))}`} sub="券商账户口径" icon={<Activity size={18}/>}/>
+          <StatCard title="当前仓位" value={`${positionPct.toFixed(1)}%`} sub="持仓市值 / 总资产" icon={<Gauge size={18}/>}/>
           <StatCard title="进攻信号" value={String(attackSignals)} sub={attackSignals ? '观察池出现转强' : '暂无转强标的'} icon={<Gauge size={18}/>}/>
         </section>
         <PortfolioTable items={positions} onAdd={() => setEditor({ kind: 'position' })} onEdit={value => setEditor({ kind: 'position', value })} onDelete={removePosition}/>
@@ -65,7 +71,7 @@ export default function App() {
       </>}
 
       {view === 'portfolio' && <>
-        <section className="view-intro"><span className="eyebrow">PORTFOLIO LEDGER</span><h2>持仓与成本</h2><p>这里是你的唯一持仓口径。现阶段数据只保存在当前浏览器，不会上传到服务器。</p></section>
+        <section className="view-intro"><span className="eyebrow">PORTFOLIO LEDGER · {accountSnapshot.asOf}</span><h2>持仓与成本</h2><p>已导入 JJ 最新持仓；后续手动编辑仍只保存在当前浏览器，不会上传到服务器。</p></section>
         <PortfolioTable items={positions} onAdd={() => setEditor({ kind: 'position' })} onEdit={value => setEditor({ kind: 'position', value })} onDelete={removePosition}/>
       </>}
 

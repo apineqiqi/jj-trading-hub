@@ -26,6 +26,7 @@ export interface Position {
   id: string;
   symbol: string;
   name: string;
+  owner?: string;
   shares: number;
   cost: number;
   price: number;

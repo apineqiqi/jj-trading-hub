@@ -1,4 +1,26 @@
-import type { DecisionRule, WatchItem } from '../types/market';
+import type { AccountSnapshot, DecisionRule, Position, WatchItem } from '../types/market';
+
+export const accountSnapshot: AccountSnapshot = {
+  asOf: '2026-09-03 收盘',
+  totalAssets: 1071638.44,
+  marketValue: 1065192.00,
+  availableCash: 6446.44,
+  unrealizedPnl: 85541.32,
+  positionPct: 99.4
+};
+
+export const initialPositions: Position[] = [
+  {
+    id: 'jj-688167', symbol: '688167', name: '炬光科技', owner: 'JJ', shares: 2200,
+    cost: 267.496, price: 284.180, reportedMarketValue: 625196.00,
+    reportedPnl: 36681.51, reportedReturnPct: 6.240
+  },
+  {
+    id: 'jj-688256', symbol: '688256', name: '寒武纪', owner: 'JJ', shares: 400,
+    cost: 977.764, price: 1099.990, reportedMarketValue: 439996.00,
+    reportedPnl: 48859.81, reportedReturnPct: 12.500
+  }
+];
 
 export const watchlist: WatchItem[] = [
   {

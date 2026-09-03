@@ -1,4 +1,4 @@
-import type { AccountSnapshot, DecisionRule, Position, WatchItem } from '../types/market';
+import type { AccountSnapshot, DecisionRule, PortfolioSnapshot, Position, WatchItem } from '../types/market';
 
 export const accountSnapshot: AccountSnapshot = {
   asOf: '2026-09-03 收盘',
@@ -19,6 +19,18 @@ export const initialPositions: Position[] = [
     id: 'jj-688256', symbol: '688256', name: '寒武纪', owner: 'JJ', shares: 400,
     cost: 977.764, price: 1099.990, reportedMarketValue: 439996.00,
     reportedPnl: 48859.81, reportedReturnPct: 12.500
+  }
+];
+
+export const initialSnapshots: PortfolioSnapshot[] = [
+  {
+    id: 'snapshot-2026-09-03',
+    date: '2026-09-03',
+    totalAssets: 1071638.44,
+    marketValue: 1065192.00,
+    cash: 6446.44,
+    unrealizedPnl: 85541.32,
+    note: 'JJ 最新持仓截图同步'
   }
 ];
 

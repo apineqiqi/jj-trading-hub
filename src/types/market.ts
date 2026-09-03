@@ -30,4 +30,16 @@ export interface Position {
   shares: number;
   cost: number;
   price: number;
+  reportedMarketValue?: number;
+  reportedPnl?: number;
+  reportedReturnPct?: number;
+}
+
+export interface AccountSnapshot {
+  asOf: string;
+  totalAssets: number;
+  marketValue: number;
+  availableCash: number;
+  unrealizedPnl: number;
+  positionPct: number;
 }

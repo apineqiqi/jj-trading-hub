@@ -1,21 +1,24 @@
-import { Activity, BellRing, BriefcaseBusiness, Gauge, LayoutDashboard, ListFilter, ShieldCheck } from 'lucide-react';
+import { Activity, BellRing, BriefcaseBusiness, ChartNoAxesCombined, Gauge, LayoutDashboard, ListFilter, ShieldCheck } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { DecisionTable } from './components/DecisionTable';
 import { EditorModal } from './components/EditorModal';
 import { PortfolioTable } from './components/PortfolioTable';
+import { ReviewWorkspace } from './components/ReviewWorkspace';
 import { StatCard } from './components/StatCard';
 import { WatchTable } from './components/WatchTable';
-import { accountSnapshot, decisions, initialPositions, watchlist as initialWatchlist } from './data/mock';
+import { accountSnapshot, decisions, initialPositions, initialSnapshots, watchlist as initialWatchlist } from './data/mock';
 import { usePersistentState } from './hooks/usePersistentState';
-import type { Position, WatchItem } from './types/market';
+import type { PortfolioSnapshot, Position, TradeRecord, WatchItem } from './types/market';
 
-type View = 'overview' | 'portfolio' | 'watchlist';
+type View = 'overview' | 'portfolio' | 'watchlist' | 'review';
 type EditorTarget = { kind: 'position'; value?: Position } | { kind: 'watch'; value?: WatchItem };
 
 export default function App() {
   const [view, setView] = useState<View>('overview');
   const [positions, setPositions] = usePersistentState<Position[]>('jj-trading-v03-positions', initialPositions);
   const [watchlist, setWatchlist] = usePersistentState<WatchItem[]>('jj-trading-v02-watchlist', initialWatchlist);
+  const [snapshots, setSnapshots] = usePersistentState<PortfolioSnapshot[]>('jj-trading-v04-snapshots', initialSnapshots);
+  const [trades, setTrades] = usePersistentState<TradeRecord[]>('jj-trading-v04-trades', []);
   const [editor, setEditor] = useState<EditorTarget | null>(null);
 
   const portfolio = useMemo(() => positions.reduce((total, item) => total + (item.reportedMarketValue ?? item.price * item.shares), 0), [positions]);
@@ -38,10 +41,12 @@ export default function App() {
 
   const removePosition = (item: Position) => window.confirm(`删除 ${item.name} 的持仓记录？`) && setPositions(current => current.filter(x => x.id !== item.id));
   const removeWatch = (item: WatchItem) => window.confirm(`从观察池移除 ${item.name}？`) && setWatchlist(current => current.filter(x => x.symbol !== item.symbol));
+  const removeSnapshot = (item: PortfolioSnapshot) => window.confirm(`删除 ${item.date} 的账户快照？`) && setSnapshots(current => current.filter(x => x.id !== item.id));
+  const removeTrade = (item: TradeRecord) => window.confirm(`删除 ${item.date} ${item.name} 的交易记录？`) && setTrades(current => current.filter(x => x.id !== item.id));
 
   return <div className="app-shell">
     <header>
-      <div><div className="brand-line"><span className="eyebrow">JJ PERSONAL TRADING OS</span><span className="version-badge">V0.3</span></div><h1>JJ 交易中枢</h1></div>
+      <div><div className="brand-line"><span className="eyebrow">JJ PERSONAL TRADING OS</span><span className="version-badge">V0.4</span></div><h1>JJ 交易中枢</h1></div>
       <button className="icon-btn" title="提醒"><BellRing size={20}/></button>
     </header>
 
@@ -49,6 +54,7 @@ export default function App() {
       <button className={view === 'overview' ? 'active' : ''} onClick={() => setView('overview')}><LayoutDashboard size={16}/>总览</button>
       <button className={view === 'portfolio' ? 'active' : ''} onClick={() => setView('portfolio')}><BriefcaseBusiness size={16}/>持仓 <span>{positions.length}</span></button>
       <button className={view === 'watchlist' ? 'active' : ''} onClick={() => setView('watchlist')}><ListFilter size={16}/>观察池 <span>{watchlist.length}</span></button>
+      <button className={view === 'review' ? 'active' : ''} onClick={() => setView('review')}><ChartNoAxesCombined size={16}/>复盘 <span>{snapshots.length}</span></button>
       <div className="save-state"><i></i>本机已保存</div>
     </nav>
 
@@ -79,6 +85,16 @@ export default function App() {
         <section className="view-intro"><span className="eyebrow">TACTICAL WATCHLIST</span><h2>观察池与交易边界</h2><p>持续维护状态、关键价位与失效条件，让盘中动作来自计划，而不是情绪。</p></section>
         <WatchTable items={watchlist} onAdd={() => setEditor({ kind: 'watch' })} onEdit={value => setEditor({ kind: 'watch', value })} onDelete={removeWatch}/>
       </>}
+
+      {view === 'review' && <ReviewWorkspace
+        snapshots={snapshots}
+        trades={trades}
+        currentSnapshot={{ totalAssets, marketValue: portfolio, cash: accountSnapshot.availableCash, unrealizedPnl: pnl }}
+        onAddSnapshot={item => setSnapshots(current => [...current, item])}
+        onDeleteSnapshot={removeSnapshot}
+        onAddTrade={item => setTrades(current => [...current, item])}
+        onDeleteTrade={removeTrade}
+      />}
 
       <section className="card checklist">
         <div className="section-title"><ShieldCheck size={18}/>执行纪律</div>

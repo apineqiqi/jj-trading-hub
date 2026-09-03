@@ -31,7 +31,7 @@ export async function fetchMarketQuotes(symbols: string[]): Promise<MarketQuote[
   const timeout = window.setTimeout(() => controller.abort(), 8000);
 
   try {
-    const response = await fetch(`https://push2.eastmoney.com/api/qt/ulist.np/get?secids=${encodeURIComponent(secids)}&fields=f2,f3,f12,f14,f18,f124`, {
+    const response = await fetch(`https://push2delay.eastmoney.com/api/qt/ulist.np/get?secids=${encodeURIComponent(secids)}&fields=f2,f3,f12,f14,f18,f124`, {
       signal: controller.signal,
       cache: 'no-store'
     });

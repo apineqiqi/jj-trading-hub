@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import type { Position } from '../types/market';
 
 const money = new Intl.NumberFormat('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const price = new Intl.NumberFormat('zh-CN', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 
 export function PortfolioTable({ items, onAdd, onEdit, onDelete }: {
   items: Position[];
@@ -23,14 +24,15 @@ export function PortfolioTable({ items, onAdd, onEdit, onDelete }: {
       </div>
       <div className="position-grid position-header"><span>标的</span><span>数量</span><span>成本 / 现价</span><span>市值</span><span>浮盈亏</span><span></span></div>
       {visibleItems.map(item => {
-        const pnl = (item.price - item.cost) * item.shares;
-        const pnlPct = item.cost ? (item.price / item.cost - 1) * 100 : 0;
+        const marketValue = item.reportedMarketValue ?? item.price * item.shares;
+        const pnl = item.reportedPnl ?? (item.price - item.cost) * item.shares;
+        const pnlPct = item.reportedReturnPct ?? (item.cost ? (item.price / item.cost - 1) * 100 : 0);
         return <div className="position-grid position-row" key={item.id}>
           <span><b>{item.name}</b><small>{item.symbol}<em className="owner-tag">{item.owner?.trim() || '未标记'}</em></small></span>
           <span>{item.shares}</span>
-          <span><small>¥{money.format(item.cost)}</small>¥{money.format(item.price)}</span>
-          <span>¥{money.format(item.price * item.shares)}</span>
-          <span className={pnl >= 0 ? 'up' : 'down'}>{pnl >= 0 ? '+' : ''}¥{money.format(pnl)}<small>{pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(2)}%</small></span>
+          <span><small>¥{price.format(item.cost)}</small>¥{price.format(item.price)}</span>
+          <span>¥{money.format(marketValue)}</span>
+          <span className={pnl >= 0 ? 'up' : 'down'}>{pnl >= 0 ? '+' : ''}¥{money.format(pnl)}<small>{pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(3)}%</small></span>
           <span className="row-actions"><button className="tiny-btn" title={`编辑 ${item.name}`} onClick={() => onEdit(item)}><Pencil size={14}/></button><button className="tiny-btn danger" title={`删除 ${item.name}`} onClick={() => onDelete(item)}><Trash2 size={14}/></button></span>
         </div>;
       })}

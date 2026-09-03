@@ -1,13 +1,15 @@
 import { Activity, BellRing, BriefcaseBusiness, ChartNoAxesCombined, Gauge, LayoutDashboard, ListFilter, ShieldCheck } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DecisionTable } from './components/DecisionTable';
 import { EditorModal } from './components/EditorModal';
+import { MarketPulse, type QuoteStatus } from './components/MarketPulse';
 import { PortfolioTable } from './components/PortfolioTable';
 import { ReviewWorkspace } from './components/ReviewWorkspace';
 import { StatCard } from './components/StatCard';
 import { WatchTable } from './components/WatchTable';
 import { accountSnapshot, decisions, initialPositions, initialSnapshots, watchlist as initialWatchlist } from './data/mock';
 import { usePersistentState } from './hooks/usePersistentState';
+import { fetchMarketQuotes } from './services/quotes';
 import type { PortfolioSnapshot, Position, TradeRecord, WatchItem } from './types/market';
 
 type View = 'overview' | 'portfolio' | 'watchlist' | 'review';
@@ -20,6 +22,35 @@ export default function App() {
   const [snapshots, setSnapshots] = usePersistentState<PortfolioSnapshot[]>('jj-trading-v04-snapshots', initialSnapshots);
   const [trades, setTrades] = usePersistentState<TradeRecord[]>('jj-trading-v04-trades', []);
   const [editor, setEditor] = useState<EditorTarget | null>(null);
+  const [quoteState, setQuoteState] = useState<{ status: QuoteStatus; updatedAt?: string; count: number; message?: string }>({ status: 'loading', count: 0 });
+
+  const trackedSymbols = useMemo(() => Array.from(new Set([...positions, ...watchlist].map(item => item.symbol))).sort().join(','), [positions, watchlist]);
+  const refreshQuotes = useCallback(async () => {
+    setQuoteState(current => ({ ...current, status: 'loading', message: undefined }));
+    try {
+      const quotes = await fetchMarketQuotes(trackedSymbols.split(','));
+      if (!quotes.length) throw new Error('未返回有效行情');
+      const bySymbol = new Map(quotes.map(quote => [quote.symbol, quote]));
+      setPositions(current => current.map(item => {
+        const quote = bySymbol.get(item.symbol);
+        return quote ? { ...item, price: quote.price, reportedMarketValue: undefined, reportedPnl: undefined, reportedReturnPct: undefined, quoteUpdatedAt: quote.updatedAt } : item;
+      }));
+      setWatchlist(current => current.map(item => {
+        const quote = bySymbol.get(item.symbol);
+        return quote ? { ...item, price: quote.price, changePct: quote.changePct, quoteUpdatedAt: quote.updatedAt } : item;
+      }));
+      const updatedAt = quotes.reduce((latest, quote) => quote.updatedAt > latest ? quote.updatedAt : latest, quotes[0].updatedAt);
+      setQuoteState({ status: 'success', updatedAt, count: quotes.length });
+    } catch (error) {
+      setQuoteState(current => ({ ...current, status: 'error', message: error instanceof Error ? error.message : '请稍后重试' }));
+    }
+  }, [trackedSymbols, setPositions, setWatchlist]);
+
+  useEffect(() => {
+    void refreshQuotes();
+    const timer = window.setInterval(() => void refreshQuotes(), 60_000);
+    return () => window.clearInterval(timer);
+  }, [refreshQuotes]);
 
   const portfolio = useMemo(() => positions.reduce((total, item) => total + (item.reportedMarketValue ?? item.price * item.shares), 0), [positions]);
   const pnl = useMemo(() => positions.reduce((total, item) => total + (item.reportedPnl ?? (item.price - item.cost) * item.shares), 0), [positions]);
@@ -46,7 +77,7 @@ export default function App() {
 
   return <div className="app-shell">
     <header>
-      <div><div className="brand-line"><span className="eyebrow">JJ PERSONAL TRADING OS</span><span className="version-badge">V0.4</span></div><h1>JJ 交易中枢</h1></div>
+      <div><div className="brand-line"><span className="eyebrow">JJ PERSONAL TRADING OS</span><span className="version-badge">V0.5</span></div><h1>JJ 交易中枢</h1></div>
       <button className="icon-btn" title="提醒"><BellRing size={20}/></button>
     </header>
 
@@ -58,6 +89,8 @@ export default function App() {
       <div className="save-state"><i></i>本机已保存</div>
     </nav>
 
+    <MarketPulse {...quoteState} onRefresh={() => void refreshQuotes()}/>
+
     <main>
       {view === 'overview' && <>
         <section className="hero card">
@@ -65,10 +98,10 @@ export default function App() {
           <div className="hero-score"><span>今日环境</span><strong>分化</strong></div>
         </section>
         <section className="stats">
-          <StatCard title="总资产" value={money(totalAssets)} sub={accountSnapshot.asOf} icon={<BriefcaseBusiness size={18}/>}/>
+          <StatCard title="总资产" value={money(totalAssets)} sub={quoteState.status === 'success' ? '延迟行情估算' : accountSnapshot.asOf} icon={<BriefcaseBusiness size={18}/>}/>
           <StatCard title="持仓市值" value={money(portfolio)} sub={`${positions.length} 个持仓`} icon={<BriefcaseBusiness size={18}/>}/>
           <StatCard title="可用现金" value={money(accountSnapshot.availableCash)} sub="账户可用余额" icon={<Activity size={18}/>}/>
-          <StatCard title="浮动盈亏" value={`${pnl >= 0 ? '+' : '-'}${money(Math.abs(pnl))}`} sub="券商账户口径" icon={<Activity size={18}/>}/>
+          <StatCard title="浮动盈亏" value={`${pnl >= 0 ? '+' : '-'}${money(Math.abs(pnl))}`} sub={quoteState.status === 'success' ? '行情估算口径' : '券商账户口径'} icon={<Activity size={18}/>}/>
           <StatCard title="当前仓位" value={`${positionPct.toFixed(1)}%`} sub="持仓市值 / 总资产" icon={<Gauge size={18}/>}/>
           <StatCard title="进攻信号" value={String(attackSignals)} sub={attackSignals ? '观察池出现转强' : '暂无转强标的'} icon={<Gauge size={18}/>}/>
         </section>

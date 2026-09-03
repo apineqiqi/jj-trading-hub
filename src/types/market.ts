@@ -21,3 +21,12 @@ export interface DecisionRule {
   action: string;
   priority: '高' | '中' | '低';
 }
+
+export interface Position {
+  id: string;
+  symbol: string;
+  name: string;
+  shares: number;
+  cost: number;
+  price: number;
+}

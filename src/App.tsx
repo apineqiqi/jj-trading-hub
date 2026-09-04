@@ -1,4 +1,4 @@
-import { Activity, BellRing, BriefcaseBusiness, ChartNoAxesCombined, Eye, EyeOff, Gauge, LayoutDashboard, ListFilter, ShieldCheck, UsersRound } from 'lucide-react';
+import { Activity, BellRing, BriefcaseBusiness, ChartNoAxesCombined, Eye, EyeOff, Gauge, LayoutDashboard, ListChecks, ListFilter, ShieldCheck, UsersRound } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DecisionTable } from './components/DecisionTable';
 import { EditorModal } from './components/EditorModal';
@@ -6,6 +6,7 @@ import { MarketPulse, type QuoteStatus } from './components/MarketPulse';
 import { PortfolioTable } from './components/PortfolioTable';
 import { ReviewWorkspace } from './components/ReviewWorkspace';
 import { StatCard } from './components/StatCard';
+import { TradingWorkflow } from './components/TradingWorkflow';
 import { UserManagerModal } from './components/UserManagerModal';
 import { UserSwitcher } from './components/UserSwitcher';
 import { WatchTable } from './components/WatchTable';
@@ -13,9 +14,9 @@ import { accountSnapshot, decisions, initialPositions, initialSnapshots, watchli
 import { defaultUser, migratePositions, migrateUsers, migrateWatchlist } from './data/migration';
 import { usePersistentState } from './hooks/usePersistentState';
 import { fetchMarketQuotes } from './services/quotes';
-import type { PortfolioSnapshot, Position, TradeRecord, UserProfile, WatchItem } from './types/market';
+import type { DailyWorkflow, PortfolioSnapshot, Position, TradeRecord, UserProfile, WatchItem } from './types/market';
 
-type View = 'overview' | 'portfolio' | 'watchlist' | 'review';
+type View = 'overview' | 'workflow' | 'portfolio' | 'watchlist' | 'review';
 type EditorTarget = { kind: 'position'; value?: Position } | { kind: 'watch'; value?: WatchItem };
 
 export default function App() {
@@ -27,6 +28,7 @@ export default function App() {
   const [snapshots, setSnapshots] = usePersistentState<PortfolioSnapshot[]>('jj-trading-v04-snapshots', initialSnapshots);
   const [trades, setTrades] = usePersistentState<TradeRecord[]>('jj-trading-v04-trades', []);
   const [privacyMode, setPrivacyMode] = usePersistentState<boolean>('jj-trading-privacy-mode', false);
+  const [workflows, setWorkflows] = usePersistentState<DailyWorkflow[]>('jj-trading-v07-workflows', []);
   const [editor, setEditor] = useState<EditorTarget | null>(null);
   const [managingUsers, setManagingUsers] = useState(false);
   const [quoteState, setQuoteState] = useState<{ status: QuoteStatus; updatedAt?: string; count: number; message?: string }>({ status: 'loading', count: 0 });
@@ -37,6 +39,12 @@ export default function App() {
   const scopedWatchlist = selectedUserId === 'all' ? watchlist : watchlist.filter(item => item.userId === selectedUserId);
   const activeProfile = users.find(user => user.id === selectedUserId);
   const editorUserId = selectedUserId === 'all' ? activeUsers[0]?.id ?? defaultUser.id : selectedUserId;
+  const workflowUserId = selectedUserId === 'all' ? defaultUser.id : selectedUserId;
+  const workflowOwner = users.find(user => user.id === workflowUserId)?.name ?? 'JJ';
+  const workflowPositions = positions.filter(item => item.userId === workflowUserId);
+  const workflowWatchlist = watchlist.filter(item => item.userId === workflowUserId);
+  const today = new Date().toLocaleDateString('sv-SE');
+  const workflow = workflows.find(item => item.userId === workflowUserId && item.date === today) ?? { id: `${workflowUserId}-${today}`, userId: workflowUserId, date: today, checks: {}, notes: {}, updatedAt: new Date().toISOString() };
 
   const trackedSymbols = useMemo(() => Array.from(new Set([...positions, ...watchlist].map(item => item.symbol))).sort().join(','), [positions, watchlist]);
   const refreshQuotes = useCallback(async () => {
@@ -72,8 +80,13 @@ export default function App() {
   const totalAssets = portfolio + scopedCash;
   const positionPct = totalAssets ? portfolio / totalAssets * 100 : 0;
   const attackSignals = scopedWatchlist.filter(item => item.state === '转强').length;
+  const workflowPortfolio = workflowPositions.reduce((total, item) => total + (item.reportedMarketValue ?? item.price * item.shares), 0);
+  const workflowCash = workflowUserId === defaultUser.id ? accountSnapshot.availableCash : 0;
+  const workflowPositionPct = workflowPortfolio + workflowCash ? workflowPortfolio / (workflowPortfolio + workflowCash) * 100 : 0;
   const money = (value: number) => `¥${value.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const privateValue = (value: string) => privacyMode ? '••••••' : value;
+  const workflowCompleted = Object.values(workflow.checks).filter(Boolean).length;
+  const saveWorkflow = (next: DailyWorkflow) => setWorkflows(current => current.some(item => item.id === next.id) ? current.map(item => item.id === next.id ? next : item) : [...current, next]);
 
   const saveEditor = (value: Position | WatchItem) => {
     if (editor?.kind === 'position') {
@@ -108,12 +121,13 @@ export default function App() {
 
   return <div className="app-shell">
     <header>
-      <div><div className="brand-line"><span className="eyebrow">JJ PERSONAL TRADING OS</span><span className="version-badge">V0.6</span></div><h1>JJ 交易中枢</h1></div>
+      <div><div className="brand-line"><span className="eyebrow">JJ PERSONAL TRADING OS</span><span className="version-badge">V0.7</span></div><h1>JJ 交易中枢</h1></div>
       <div className="header-actions"><UserSwitcher users={users} value={selectedUserId} onChange={setActiveUserId} onManage={() => setManagingUsers(true)}/><button className={`privacy-toggle ${privacyMode ? 'active' : ''}`} aria-pressed={privacyMode} onClick={() => setPrivacyMode(value => !value)}>{privacyMode ? <Eye size={17}/> : <EyeOff size={17}/>}<span>{privacyMode ? '显示持仓' : '隐藏持仓'}</span></button><button className="icon-btn" title="提醒"><BellRing size={20}/></button></div>
     </header>
 
     <nav className="workspace-nav" aria-label="工作区">
       <button className={view === 'overview' ? 'active' : ''} onClick={() => setView('overview')}><LayoutDashboard size={16}/>总览</button>
+      <button className={view === 'workflow' ? 'active' : ''} onClick={() => setView('workflow')}><ListChecks size={16}/>交易日 <span>{workflowCompleted}/12</span></button>
       <button className={view === 'portfolio' ? 'active' : ''} onClick={() => setView('portfolio')}><BriefcaseBusiness size={16}/>持仓 <span>{scopedPositions.length}</span></button>
       <button className={view === 'watchlist' ? 'active' : ''} onClick={() => setView('watchlist')}><ListFilter size={16}/>观察池 <span>{scopedWatchlist.length}</span></button>
       <button className={view === 'review' ? 'active' : ''} onClick={() => setView('review')}><ChartNoAxesCombined size={16}/>复盘 <span>{snapshots.length}</span></button>
@@ -125,6 +139,9 @@ export default function App() {
     <main>
       {view === 'overview' && <>
         <section className="account-scope"><span style={{ background: activeProfile?.color ?? '#f2b84b' }}></span><UsersRound size={15}/><b>{activeProfile?.name ?? '全账户'}</b><small>{activeProfile ? '独立用户视角' : `${activeUsers.length} 位用户的合并视角`}</small></section>
+        <button className="workflow-launch" onClick={() => setView('workflow')}>
+          <span className="workflow-launch-icon"><ListChecks size={19}/></span><span><small>今日交易流程 · {workflowOwner}</small><b>{workflowCompleted === 12 ? '今日流程已完成' : `还有 ${12 - workflowCompleted} 项待确认`}</b></span><span className="workflow-launch-progress"><i style={{ width: `${workflowCompleted / 12 * 100}%` }}/></span><em>{workflowCompleted}/12</em><span className="workflow-launch-cta">继续 <span>→</span></span>
+        </button>
         <section className="hero card">
           <div><span className="eyebrow">{accountSnapshot.asOf}</span><h2>设备 / 测试 / 激光强于光模块核心</h2><p>已同步 JJ 最新账户快照。今日不是 CPO 整体 β 行情，联讯与炬光相对占优；寒武纪仍处等待确认阶段。</p></div>
           <div className="hero-score"><span>今日环境</span><strong>分化</strong></div>
@@ -150,6 +167,8 @@ export default function App() {
         <section className="view-intro"><span className="eyebrow">TACTICAL WATCHLIST</span><h2>观察池与交易边界</h2><p>持续维护状态、关键价位与失效条件，让盘中动作来自计划，而不是情绪。</p></section>
         <WatchTable items={scopedWatchlist} users={users} showOwners={selectedUserId === 'all'} onAdd={() => setEditor({ kind: 'watch' })} onEdit={value => setEditor({ kind: 'watch', value })} onDelete={removeWatch}/>
       </>}
+
+      {view === 'workflow' && <TradingWorkflow record={workflow} ownerName={workflowOwner} positions={workflowPositions.length} attackSignals={workflowWatchlist.filter(item => item.state === '转强').length} positionPct={workflowPositionPct} hidden={privacyMode} onChange={saveWorkflow}/>}
 
       {view === 'review' && <ReviewWorkspace
         hidden={privacyMode}

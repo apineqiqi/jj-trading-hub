@@ -1,6 +1,7 @@
 export type SignalState = '转强' | '观察' | '防守' | '等待确认';
 
 export interface WatchItem {
+  userId?: string;
   symbol: string;
   name: string;
   price: number;
@@ -12,7 +13,6 @@ export interface WatchItem {
   trigger?: string;
   invalidation?: string;
   note: string;
-  quoteUpdatedAt?: string;
 }
 
 export interface DecisionRule {
@@ -28,44 +28,15 @@ export interface Position {
   symbol: string;
   name: string;
   owner?: string;
+  userId?: string;
   shares: number;
   cost: number;
   price: number;
-  reportedMarketValue?: number;
-  reportedPnl?: number;
-  reportedReturnPct?: number;
-  quoteUpdatedAt?: string;
 }
 
-export interface AccountSnapshot {
-  asOf: string;
-  totalAssets: number;
-  marketValue: number;
-  availableCash: number;
-  unrealizedPnl: number;
-  positionPct: number;
-}
-
-export interface PortfolioSnapshot {
+export interface UserProfile {
   id: string;
-  date: string;
-  totalAssets: number;
-  marketValue: number;
-  cash: number;
-  unrealizedPnl: number;
-  note?: string;
-}
-
-export type TradeSide = '买入' | '卖出';
-
-export interface TradeRecord {
-  id: string;
-  date: string;
-  side: TradeSide;
-  symbol: string;
   name: string;
-  shares: number;
-  price: number;
-  fee: number;
-  note?: string;
+  color: string;
+  archived?: boolean;
 }

@@ -78,3 +78,14 @@ export interface TradeRecord {
   fee: number;
   note?: string;
 }
+
+export type WorkflowPhase = 'pre' | 'live' | 'close';
+
+export interface DailyWorkflow {
+  id: string;
+  userId: string;
+  date: string;
+  checks: Record<string, boolean>;
+  notes: Partial<Record<WorkflowPhase, string>>;
+  updatedAt: string;
+}

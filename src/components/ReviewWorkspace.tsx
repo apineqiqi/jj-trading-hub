@@ -37,10 +37,11 @@ function EquityCurve({ snapshots }: { snapshots: PortfolioSnapshot[] }) {
   </div>;
 }
 
-export function ReviewWorkspace({ snapshots, trades, currentSnapshot, onAddSnapshot, onDeleteSnapshot, onAddTrade, onDeleteTrade }: {
+export function ReviewWorkspace({ snapshots, trades, currentSnapshot, hidden = false, onAddSnapshot, onDeleteSnapshot, onAddTrade, onDeleteTrade }: {
   snapshots: PortfolioSnapshot[];
   trades: TradeRecord[];
   currentSnapshot: Omit<PortfolioSnapshot, 'id' | 'date' | 'note'>;
+  hidden?: boolean;
   onAddSnapshot: (item: PortfolioSnapshot) => void;
   onDeleteSnapshot: (item: PortfolioSnapshot) => void;
   onAddTrade: (item: TradeRecord) => void;
@@ -55,6 +56,7 @@ export function ReviewWorkspace({ snapshots, trades, currentSnapshot, onAddSnaps
   const assetChange = oldest && latest ? latest.totalAssets - oldest.totalAssets : 0;
   const returnPct = oldest?.totalAssets ? assetChange / oldest.totalAssets * 100 : 0;
   const today = new Intl.DateTimeFormat('en-CA').format(new Date());
+  const privateMoney = (value: number) => hidden ? '••••••' : `¥${money.format(value)}`;
 
   const addSnapshot = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -89,11 +91,11 @@ export function ReviewWorkspace({ snapshots, trades, currentSnapshot, onAddSnaps
     <section className="review-summary">
       <div className="curve-card card">
         <div className="section-heading"><div><div className="section-title"><TrendingUp size={18}/>资产轨迹</div><span className="section-meta">按账户总资产绘制 · {snapshots.length} 个数据点</span></div><span className={assetChange >= 0 ? 'performance up' : 'performance down'}>{assetChange >= 0 ? '+' : ''}{returnPct.toFixed(2)}%</span></div>
-        <EquityCurve snapshots={snapshots}/>
+        <div className={hidden ? 'privacy-chart' : ''}><EquityCurve snapshots={snapshots}/></div>
       </div>
       <div className="review-metrics">
-        <div className="metric-block"><span>最新总资产</span><strong>¥{money.format(latest?.totalAssets ?? currentSnapshot.totalAssets)}</strong><small>{latest?.date ?? '等待快照'}</small></div>
-        <div className="metric-block"><span>累计变化</span><strong className={assetChange >= 0 ? 'up' : 'down'}>{assetChange >= 0 ? '+' : ''}¥{money.format(assetChange)}</strong><small>首个快照至今</small></div>
+        <div className="metric-block"><span>最新总资产</span><strong>{privateMoney(latest?.totalAssets ?? currentSnapshot.totalAssets)}</strong><small>{latest?.date ?? '等待快照'}</small></div>
+        <div className="metric-block"><span>累计变化</span><strong className={hidden ? 'privacy-value' : assetChange >= 0 ? 'up' : 'down'}>{hidden ? '••••••' : `${assetChange >= 0 ? '+' : ''}¥${money.format(assetChange)}`}</strong><small>首个快照至今</small></div>
         <div className="metric-block"><span>已记录交易</span><strong>{trades.length}</strong><small>{trades.length ? '买卖动作可回溯' : '等待第一笔记录'}</small></div>
       </div>
     </section>
@@ -104,8 +106,8 @@ export function ReviewWorkspace({ snapshots, trades, currentSnapshot, onAddSnaps
         <div className="snapshot-list">
           {sortedSnapshots.map(item => <article className="snapshot-row" key={item.id}>
             <time>{item.date}<i></i></time>
-            <div><b>¥{money.format(item.totalAssets)}</b><span>市值 ¥{money.format(item.marketValue)} · 现金 ¥{money.format(item.cash)}</span>{item.note && <small>{item.note}</small>}</div>
-            <div className={item.unrealizedPnl >= 0 ? 'up snapshot-pnl' : 'down snapshot-pnl'}>{item.unrealizedPnl >= 0 ? '+' : ''}¥{money.format(item.unrealizedPnl)}</div>
+            <div><b>{privateMoney(item.totalAssets)}</b><span>{hidden ? '市值 •••••• · 现金 ••••••' : `市值 ¥${money.format(item.marketValue)} · 现金 ¥${money.format(item.cash)}`}</span>{item.note && <small>{item.note}</small>}</div>
+            <div className={hidden ? 'privacy-value snapshot-pnl' : item.unrealizedPnl >= 0 ? 'up snapshot-pnl' : 'down snapshot-pnl'}>{hidden ? '••••••' : `${item.unrealizedPnl >= 0 ? '+' : ''}¥${money.format(item.unrealizedPnl)}`}</div>
             <button className="tiny-btn danger" title={`删除 ${item.date} 快照`} onClick={() => onDeleteSnapshot(item)}><Trash2 size={14}/></button>
           </article>)}
         </div>
@@ -115,8 +117,8 @@ export function ReviewWorkspace({ snapshots, trades, currentSnapshot, onAddSnaps
         <div className="section-heading"><div><div className="section-title">交易日志</div><span className="section-meta">记录动作，也记录当时的理由</span></div><button className="tiny-add" onClick={() => setTradeForm(true)}><Plus size={14}/>新增</button></div>
         {sortedTrades.length ? <div className="trade-list">{sortedTrades.map(item => <article className="trade-row" key={item.id}>
           <div className={`side-icon ${item.side === '买入' ? 'buy' : 'sell'}`}>{item.side === '买入' ? <ArrowDownLeft size={16}/> : <ArrowUpRight size={16}/>}</div>
-          <div><b>{item.name}<em>{item.side}</em></b><span>{item.date} · {item.symbol} · {item.shares} 股 × ¥{money.format(item.price)}</span>{item.note && <small>{item.note}</small>}</div>
-          <strong>¥{money.format(item.shares * item.price + (item.side === '买入' ? item.fee : -item.fee))}</strong>
+          <div><b>{hidden ? '交易标的' : item.name}<em>{item.side}</em></b><span>{hidden ? `${item.date} · •••••• · •••• 股 × ••••••` : `${item.date} · ${item.symbol} · ${item.shares} 股 × ¥${money.format(item.price)}`}</span>{item.note && <small>{item.note}</small>}</div>
+          <strong>{hidden ? '••••••' : `¥${money.format(item.shares * item.price + (item.side === '买入' ? item.fee : -item.fee))}`}</strong>
           <button className="tiny-btn danger" title={`删除 ${item.name} 交易`} onClick={() => onDeleteTrade(item)}><Trash2 size={14}/></button>
         </article>)}</div> : <div className="ledger-empty"><BookOpen size={26}/><b>还没有交易记录</b><span>从下一笔买卖开始，把动作和理由一起留下。</span><button className="ghost-btn" onClick={() => setTradeForm(true)}>记录第一笔</button></div>}
       </div>

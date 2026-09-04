@@ -1,4 +1,4 @@
-import { Activity, BellRing, BriefcaseBusiness, ChartNoAxesCombined, Gauge, LayoutDashboard, ListFilter, ShieldCheck } from 'lucide-react';
+import { Activity, BellRing, BriefcaseBusiness, ChartNoAxesCombined, Eye, EyeOff, Gauge, LayoutDashboard, ListFilter, ShieldCheck } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DecisionTable } from './components/DecisionTable';
 import { EditorModal } from './components/EditorModal';
@@ -21,6 +21,7 @@ export default function App() {
   const [watchlist, setWatchlist] = usePersistentState<WatchItem[]>('jj-trading-v02-watchlist', initialWatchlist);
   const [snapshots, setSnapshots] = usePersistentState<PortfolioSnapshot[]>('jj-trading-v04-snapshots', initialSnapshots);
   const [trades, setTrades] = usePersistentState<TradeRecord[]>('jj-trading-v04-trades', []);
+  const [privacyMode, setPrivacyMode] = usePersistentState<boolean>('jj-trading-privacy-mode', false);
   const [editor, setEditor] = useState<EditorTarget | null>(null);
   const [quoteState, setQuoteState] = useState<{ status: QuoteStatus; updatedAt?: string; count: number; message?: string }>({ status: 'loading', count: 0 });
 
@@ -58,6 +59,7 @@ export default function App() {
   const positionPct = totalAssets ? portfolio / totalAssets * 100 : 0;
   const attackSignals = watchlist.filter(item => item.state === '转强').length;
   const money = (value: number) => `¥${value.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const privateValue = (value: string) => privacyMode ? '••••••' : value;
 
   const saveEditor = (value: Position | WatchItem) => {
     if (editor?.kind === 'position') {
@@ -77,8 +79,8 @@ export default function App() {
 
   return <div className="app-shell">
     <header>
-      <div><div className="brand-line"><span className="eyebrow">JJ PERSONAL TRADING OS</span><span className="version-badge">V0.5</span></div><h1>JJ 交易中枢</h1></div>
-      <button className="icon-btn" title="提醒"><BellRing size={20}/></button>
+      <div><div className="brand-line"><span className="eyebrow">JJ PERSONAL TRADING OS</span><span className="version-badge">V0.5.1</span></div><h1>JJ 交易中枢</h1></div>
+      <div className="header-actions"><button className={`privacy-toggle ${privacyMode ? 'active' : ''}`} aria-pressed={privacyMode} onClick={() => setPrivacyMode(value => !value)}>{privacyMode ? <Eye size={17}/> : <EyeOff size={17}/>}<span>{privacyMode ? '显示持仓' : '隐藏持仓'}</span></button><button className="icon-btn" title="提醒"><BellRing size={20}/></button></div>
     </header>
 
     <nav className="workspace-nav" aria-label="工作区">
@@ -98,20 +100,20 @@ export default function App() {
           <div className="hero-score"><span>今日环境</span><strong>分化</strong></div>
         </section>
         <section className="stats">
-          <StatCard title="总资产" value={money(totalAssets)} sub={quoteState.status === 'success' ? '延迟行情估算' : accountSnapshot.asOf} icon={<BriefcaseBusiness size={18}/>}/>
-          <StatCard title="持仓市值" value={money(portfolio)} sub={`${positions.length} 个持仓`} icon={<BriefcaseBusiness size={18}/>}/>
-          <StatCard title="可用现金" value={money(accountSnapshot.availableCash)} sub="账户可用余额" icon={<Activity size={18}/>}/>
-          <StatCard title="浮动盈亏" value={`${pnl >= 0 ? '+' : '-'}${money(Math.abs(pnl))}`} sub={quoteState.status === 'success' ? '行情估算口径' : '券商账户口径'} icon={<Activity size={18}/>}/>
-          <StatCard title="当前仓位" value={`${positionPct.toFixed(1)}%`} sub="持仓市值 / 总资产" icon={<Gauge size={18}/>}/>
+          <StatCard title="总资产" value={privateValue(money(totalAssets))} sub={quoteState.status === 'success' ? '延迟行情估算' : accountSnapshot.asOf} icon={<BriefcaseBusiness size={18}/>}/>
+          <StatCard title="持仓市值" value={privateValue(money(portfolio))} sub={`${positions.length} 个持仓`} icon={<BriefcaseBusiness size={18}/>}/>
+          <StatCard title="可用现金" value={privateValue(money(accountSnapshot.availableCash))} sub="账户可用余额" icon={<Activity size={18}/>}/>
+          <StatCard title="浮动盈亏" value={privateValue(`${pnl >= 0 ? '+' : '-'}${money(Math.abs(pnl))}`)} sub={quoteState.status === 'success' ? '行情估算口径' : '券商账户口径'} icon={<Activity size={18}/>}/>
+          <StatCard title="当前仓位" value={privateValue(`${positionPct.toFixed(1)}%`)} sub="持仓市值 / 总资产" icon={<Gauge size={18}/>}/>
           <StatCard title="进攻信号" value={String(attackSignals)} sub={attackSignals ? '观察池出现转强' : '暂无转强标的'} icon={<Gauge size={18}/>}/>
         </section>
-        <PortfolioTable items={positions} onAdd={() => setEditor({ kind: 'position' })} onEdit={value => setEditor({ kind: 'position', value })} onDelete={removePosition}/>
+        <PortfolioTable items={positions} hidden={privacyMode} onAdd={() => setEditor({ kind: 'position' })} onEdit={value => setEditor({ kind: 'position', value })} onDelete={removePosition}/>
         <DecisionTable rows={decisions}/>
       </>}
 
       {view === 'portfolio' && <>
         <section className="view-intro"><span className="eyebrow">PORTFOLIO LEDGER · {accountSnapshot.asOf}</span><h2>持仓与成本</h2><p>已导入 JJ 最新持仓；后续手动编辑仍只保存在当前浏览器，不会上传到服务器。</p></section>
-        <PortfolioTable items={positions} onAdd={() => setEditor({ kind: 'position' })} onEdit={value => setEditor({ kind: 'position', value })} onDelete={removePosition}/>
+        <PortfolioTable items={positions} hidden={privacyMode} onAdd={() => setEditor({ kind: 'position' })} onEdit={value => setEditor({ kind: 'position', value })} onDelete={removePosition}/>
       </>}
 
       {view === 'watchlist' && <>
@@ -120,6 +122,7 @@ export default function App() {
       </>}
 
       {view === 'review' && <ReviewWorkspace
+        hidden={privacyMode}
         snapshots={snapshots}
         trades={trades}
         currentSnapshot={{ totalAssets, marketValue: portfolio, cash: accountSnapshot.availableCash, unrealizedPnl: pnl }}

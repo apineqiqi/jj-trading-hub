@@ -13,6 +13,7 @@ export interface WatchItem {
   trigger?: string;
   invalidation?: string;
   note: string;
+  quoteUpdatedAt?: string;
 }
 
 export interface DecisionRule {
@@ -32,6 +33,10 @@ export interface Position {
   shares: number;
   cost: number;
   price: number;
+  reportedMarketValue?: number;
+  reportedPnl?: number;
+  reportedReturnPct?: number;
+  quoteUpdatedAt?: string;
 }
 
 export interface UserProfile {
@@ -39,4 +44,37 @@ export interface UserProfile {
   name: string;
   color: string;
   archived?: boolean;
+}
+
+export interface AccountSnapshot {
+  asOf: string;
+  totalAssets: number;
+  marketValue: number;
+  availableCash: number;
+  unrealizedPnl: number;
+  positionPct: number;
+}
+
+export interface PortfolioSnapshot {
+  id: string;
+  date: string;
+  totalAssets: number;
+  marketValue: number;
+  cash: number;
+  unrealizedPnl: number;
+  note?: string;
+}
+
+export type TradeSide = '买入' | '卖出';
+
+export interface TradeRecord {
+  id: string;
+  date: string;
+  side: TradeSide;
+  symbol: string;
+  name: string;
+  shares: number;
+  price: number;
+  fee: number;
+  note?: string;
 }

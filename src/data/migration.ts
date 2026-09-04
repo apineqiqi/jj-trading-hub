@@ -1,4 +1,4 @@
-import { watchlist as initialWatchlist } from './mock';
+import { initialPositions, watchlist as initialWatchlist } from './mock';
 import type { Position, UserProfile, WatchItem } from '../types/market';
 
 export const defaultUser: UserProfile = { id: 'user-jj', name: 'JJ', color: '#f2b84b' };
@@ -13,7 +13,7 @@ const read = <T,>(key: string, fallback: T): T => {
   }
 };
 
-const legacyPositions = () => read<Position[]>('jj-trading-v02-positions', []);
+const legacyPositions = () => read<Position[]>('jj-trading-v03-positions', initialPositions);
 const legacyWatchlist = () => read<WatchItem[]>('jj-trading-v02-watchlist', initialWatchlist);
 const legacyId = (name: string) => `user-legacy-${Array.from(name).reduce((sum, char) => (sum * 31 + char.charCodeAt(0)) >>> 0, 7).toString(36)}`;
 

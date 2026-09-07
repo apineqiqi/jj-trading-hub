@@ -10,13 +10,14 @@ import { StatCard } from './components/StatCard';
 import { TradingWorkflow } from './components/TradingWorkflow';
 import { UserManagerModal } from './components/UserManagerModal';
 import { UserSwitcher } from './components/UserSwitcher';
+import { VisualReviewBoard } from './components/VisualReviewBoard';
 import { WatchTable } from './components/WatchTable';
 import { accountSnapshot, decisions, initialPositions, initialSnapshots, watchlist as initialWatchlist } from './data/mock';
 import { seedAlertRules } from './data/alerts';
 import { defaultUser, migratePositions, migrateUsers, migrateWatchlist } from './data/migration';
 import { usePersistentState } from './hooks/usePersistentState';
 import { fetchMarketQuotes } from './services/quotes';
-import type { DailyWorkflow, PortfolioSnapshot, Position, PriceAlert, TradeRecord, UserProfile, WatchItem } from './types/market';
+import type { DailyWorkflow, PortfolioSnapshot, Position, PriceAlert, TradeRecord, UserProfile, VisualReviewRecord, WatchItem } from './types/market';
 
 type View = 'overview' | 'workflow' | 'portfolio' | 'watchlist' | 'review';
 type EditorTarget = { kind: 'position'; value?: Position } | { kind: 'watch'; value?: WatchItem };
@@ -32,6 +33,7 @@ export default function App() {
   const [privacyMode, setPrivacyMode] = usePersistentState<boolean>('jj-trading-privacy-mode', false);
   const [workflows, setWorkflows] = usePersistentState<DailyWorkflow[]>('jj-trading-v07-workflows', []);
   const [alerts, setAlerts] = usePersistentState<PriceAlert[]>('jj-trading-v08-alerts', seedAlertRules(migrateWatchlist()));
+  const [visualReviews, setVisualReviews] = usePersistentState<VisualReviewRecord[]>('jj-trading-v09-visual-reviews', []);
   const [editor, setEditor] = useState<EditorTarget | null>(null);
   const [managingUsers, setManagingUsers] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
@@ -132,6 +134,7 @@ export default function App() {
   const removeWatch = (item: WatchItem) => window.confirm(`从观察池移除 ${item.name}？`) && setWatchlist(current => current.filter(x => !(x.symbol === item.symbol && x.userId === item.userId)));
   const removeSnapshot = (item: PortfolioSnapshot) => window.confirm(`删除 ${item.date} 的账户快照？`) && setSnapshots(current => current.filter(x => x.id !== item.id));
   const removeTrade = (item: TradeRecord) => window.confirm(`删除 ${item.date} ${item.name} 的交易记录？`) && setTrades(current => current.filter(x => x.id !== item.id));
+  const removeVisualReview = (item: VisualReviewRecord) => window.confirm(`删除 ${item.date} ${item.name} 的盘面证据？`) && setVisualReviews(current => current.filter(x => x.id !== item.id));
 
   const addUser = (name: string, color: string) => {
     const user = { id: crypto.randomUUID(), name, color };
@@ -149,7 +152,7 @@ export default function App() {
 
   return <div className="app-shell">
     <header>
-      <div><div className="brand-line"><span className="eyebrow">JJ PERSONAL TRADING OS</span><span className="version-badge">V0.8</span></div><h1>JJ 交易中枢</h1></div>
+      <div><div className="brand-line"><span className="eyebrow">JJ PERSONAL TRADING OS</span><span className="version-badge">V0.9</span></div><h1>JJ 交易中枢</h1></div>
       <div className="header-actions"><UserSwitcher users={users} value={selectedUserId} onChange={setActiveUserId} onManage={() => setManagingUsers(true)}/><button className={`privacy-toggle ${privacyMode ? 'active' : ''}`} aria-pressed={privacyMode} onClick={() => setPrivacyMode(value => !value)}>{privacyMode ? <Eye size={17}/> : <EyeOff size={17}/>}<span>{privacyMode ? '显示持仓' : '隐藏持仓'}</span></button><button className={`icon-btn alert-trigger ${triggeredAlerts ? 'hot' : ''}`} title="条件提醒" onClick={() => setAlertsOpen(true)}><BellRing size={20}/>{triggeredAlerts > 0 && <span>{triggeredAlerts}</span>}</button></div>
     </header>
 
@@ -158,7 +161,7 @@ export default function App() {
       <button className={view === 'workflow' ? 'active' : ''} onClick={() => setView('workflow')}><ListChecks size={16}/>交易日 <span>{workflowCompleted}/12</span></button>
       <button className={view === 'portfolio' ? 'active' : ''} onClick={() => setView('portfolio')}><BriefcaseBusiness size={16}/>持仓 <span>{scopedPositions.length}</span></button>
       <button className={view === 'watchlist' ? 'active' : ''} onClick={() => setView('watchlist')}><ListFilter size={16}/>观察池 <span>{scopedWatchlist.length}</span></button>
-      <button className={view === 'review' ? 'active' : ''} onClick={() => setView('review')}><ChartNoAxesCombined size={16}/>复盘 <span>{snapshots.length}</span></button>
+      <button className={view === 'review' ? 'active' : ''} onClick={() => setView('review')}><ChartNoAxesCombined size={16}/>复盘 <span>{snapshots.length + visualReviews.length}</span></button>
       <div className="save-state"><i></i>本机已保存</div>
     </nav>
 
@@ -203,6 +206,15 @@ export default function App() {
         snapshots={snapshots}
         trades={trades}
         currentSnapshot={{ totalAssets, marketValue: portfolio, cash: scopedCash, unrealizedPnl: pnl }}
+        evidencePanel={<VisualReviewBoard
+          records={visualReviews}
+          users={users}
+          selectedUserId={selectedUserId}
+          watchlist={watchlist}
+          hidden={privacyMode}
+          onAdd={item => setVisualReviews(current => [item, ...current])}
+          onDelete={removeVisualReview}
+        />}
         onAddSnapshot={item => setSnapshots(current => [...current, item])}
         onDeleteSnapshot={removeSnapshot}
         onAddTrade={item => setTrades(current => [...current, item])}

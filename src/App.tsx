@@ -1,5 +1,6 @@
 import { Activity, BellRing, BriefcaseBusiness, ChartNoAxesCombined, Eye, EyeOff, Gauge, LayoutDashboard, ListChecks, ListFilter, ShieldCheck, UsersRound } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AlertCenter } from './components/AlertCenter';
 import { DecisionTable } from './components/DecisionTable';
 import { EditorModal } from './components/EditorModal';
 import { MarketPulse, type QuoteStatus } from './components/MarketPulse';
@@ -11,10 +12,11 @@ import { UserManagerModal } from './components/UserManagerModal';
 import { UserSwitcher } from './components/UserSwitcher';
 import { WatchTable } from './components/WatchTable';
 import { accountSnapshot, decisions, initialPositions, initialSnapshots, watchlist as initialWatchlist } from './data/mock';
+import { seedAlertRules } from './data/alerts';
 import { defaultUser, migratePositions, migrateUsers, migrateWatchlist } from './data/migration';
 import { usePersistentState } from './hooks/usePersistentState';
 import { fetchMarketQuotes } from './services/quotes';
-import type { DailyWorkflow, PortfolioSnapshot, Position, TradeRecord, UserProfile, WatchItem } from './types/market';
+import type { DailyWorkflow, PortfolioSnapshot, Position, PriceAlert, TradeRecord, UserProfile, WatchItem } from './types/market';
 
 type View = 'overview' | 'workflow' | 'portfolio' | 'watchlist' | 'review';
 type EditorTarget = { kind: 'position'; value?: Position } | { kind: 'watch'; value?: WatchItem };
@@ -29,8 +31,11 @@ export default function App() {
   const [trades, setTrades] = usePersistentState<TradeRecord[]>('jj-trading-v04-trades', []);
   const [privacyMode, setPrivacyMode] = usePersistentState<boolean>('jj-trading-privacy-mode', false);
   const [workflows, setWorkflows] = usePersistentState<DailyWorkflow[]>('jj-trading-v07-workflows', []);
+  const [alerts, setAlerts] = usePersistentState<PriceAlert[]>('jj-trading-v08-alerts', seedAlertRules(migrateWatchlist()));
   const [editor, setEditor] = useState<EditorTarget | null>(null);
   const [managingUsers, setManagingUsers] = useState(false);
+  const [alertsOpen, setAlertsOpen] = useState(false);
+  const notifiedAlerts = useRef(new Set<string>());
   const [quoteState, setQuoteState] = useState<{ status: QuoteStatus; updatedAt?: string; count: number; message?: string }>({ status: 'loading', count: 0 });
 
   const activeUsers = users.filter(user => !user.archived);
@@ -74,12 +79,35 @@ export default function App() {
     return () => window.clearInterval(timer);
   }, [refreshQuotes]);
 
+  useEffect(() => {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    const prices = new Map(watchlist.map(item => [`${item.userId ?? defaultUser.id}-${item.symbol}`, item.price]));
+    const active = new Set<string>();
+    alerts.forEach(rule => {
+      const price = prices.get(`${rule.userId}-${rule.symbol}`);
+      const hit = price !== undefined && rule.enabled && (rule.direction === 'above' ? price >= rule.target : price <= rule.target);
+      if (!hit) return;
+      active.add(rule.id);
+      if (!rule.acknowledged && !notifiedAlerts.current.has(rule.id)) {
+        new Notification(`JJ 交易中枢 · ${rule.name}`, { body: `${rule.label}｜现价 ${price.toFixed(2)}，目标 ${rule.target.toFixed(2)}` });
+        notifiedAlerts.current.add(rule.id);
+      }
+    });
+    notifiedAlerts.current.forEach(id => { if (!active.has(id)) notifiedAlerts.current.delete(id); });
+  }, [alerts, watchlist]);
+
   const portfolio = useMemo(() => scopedPositions.reduce((total, item) => total + (item.reportedMarketValue ?? item.price * item.shares), 0), [scopedPositions]);
   const pnl = useMemo(() => scopedPositions.reduce((total, item) => total + (item.reportedPnl ?? (item.price - item.cost) * item.shares), 0), [scopedPositions]);
   const scopedCash = selectedUserId === 'all' || selectedUserId === defaultUser.id ? accountSnapshot.availableCash : 0;
   const totalAssets = portfolio + scopedCash;
   const positionPct = totalAssets ? portfolio / totalAssets * 100 : 0;
   const attackSignals = scopedWatchlist.filter(item => item.state === '转强').length;
+  const alertPrices = new Map(watchlist.map(item => [`${item.userId ?? defaultUser.id}-${item.symbol}`, item.price]));
+  const visibleAlerts = selectedUserId === 'all' ? alerts : alerts.filter(rule => rule.userId === selectedUserId);
+  const triggeredAlerts = visibleAlerts.filter(rule => {
+    const price = alertPrices.get(`${rule.userId}-${rule.symbol}`);
+    return price !== undefined && rule.enabled && !rule.acknowledged && (rule.direction === 'above' ? price >= rule.target : price <= rule.target);
+  }).length;
   const workflowPortfolio = workflowPositions.reduce((total, item) => total + (item.reportedMarketValue ?? item.price * item.shares), 0);
   const workflowCash = workflowUserId === defaultUser.id ? accountSnapshot.availableCash : 0;
   const workflowPositionPct = workflowPortfolio + workflowCash ? workflowPortfolio / (workflowPortfolio + workflowCash) * 100 : 0;
@@ -121,8 +149,8 @@ export default function App() {
 
   return <div className="app-shell">
     <header>
-      <div><div className="brand-line"><span className="eyebrow">JJ PERSONAL TRADING OS</span><span className="version-badge">V0.7</span></div><h1>JJ 交易中枢</h1></div>
-      <div className="header-actions"><UserSwitcher users={users} value={selectedUserId} onChange={setActiveUserId} onManage={() => setManagingUsers(true)}/><button className={`privacy-toggle ${privacyMode ? 'active' : ''}`} aria-pressed={privacyMode} onClick={() => setPrivacyMode(value => !value)}>{privacyMode ? <Eye size={17}/> : <EyeOff size={17}/>}<span>{privacyMode ? '显示持仓' : '隐藏持仓'}</span></button><button className="icon-btn" title="提醒"><BellRing size={20}/></button></div>
+      <div><div className="brand-line"><span className="eyebrow">JJ PERSONAL TRADING OS</span><span className="version-badge">V0.8</span></div><h1>JJ 交易中枢</h1></div>
+      <div className="header-actions"><UserSwitcher users={users} value={selectedUserId} onChange={setActiveUserId} onManage={() => setManagingUsers(true)}/><button className={`privacy-toggle ${privacyMode ? 'active' : ''}`} aria-pressed={privacyMode} onClick={() => setPrivacyMode(value => !value)}>{privacyMode ? <Eye size={17}/> : <EyeOff size={17}/>}<span>{privacyMode ? '显示持仓' : '隐藏持仓'}</span></button><button className={`icon-btn alert-trigger ${triggeredAlerts ? 'hot' : ''}`} title="条件提醒" onClick={() => setAlertsOpen(true)}><BellRing size={20}/>{triggeredAlerts > 0 && <span>{triggeredAlerts}</span>}</button></div>
     </header>
 
     <nav className="workspace-nav" aria-label="工作区">
@@ -190,5 +218,6 @@ export default function App() {
 
     {editor && <EditorModal target={editor} users={activeUsers} defaultUserId={editorUserId} onClose={() => setEditor(null)} onSave={saveEditor}/>}
     {managingUsers && <UserManagerModal users={users} onClose={() => setManagingUsers(false)} onAdd={addUser} onUpdate={updateUser} onToggleArchive={toggleArchive}/>}
+    {alertsOpen && <AlertCenter alerts={alerts} watchlist={watchlist} users={users} selectedUserId={selectedUserId} hidden={privacyMode} onClose={() => setAlertsOpen(false)} onChange={setAlerts}/>}
   </div>;
 }

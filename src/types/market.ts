@@ -104,3 +104,22 @@ export interface PriceAlert {
   acknowledged: boolean;
   createdAt: string;
 }
+
+export type VisualReviewMoment = 'pre' | 'live' | 'close';
+export type VisualReviewBias = 'bullish' | 'neutral' | 'bearish';
+
+export interface VisualReviewRecord {
+  id: string;
+  userId: string;
+  date: string;
+  symbol: string;
+  name: string;
+  moment: VisualReviewMoment;
+  bias: VisualReviewBias;
+  imageDataUrl: string;
+  imageName: string;
+  fact: string;
+  judgment: string;
+  nextCondition: string;
+  createdAt: string;
+}

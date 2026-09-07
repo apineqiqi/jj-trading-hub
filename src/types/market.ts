@@ -123,3 +123,26 @@ export interface VisualReviewRecord {
   nextCondition: string;
   createdAt: string;
 }
+
+export interface RiskProfile {
+  userId: string;
+  singlePositionPct: number;
+  portfolioPct: number;
+  tradeRiskPct: number;
+  dailyLossPct: number;
+}
+
+export interface RiskPlan {
+  id: string;
+  userId: string;
+  symbol: string;
+  name: string;
+  entry: number;
+  stop: number;
+  target: number;
+  shares: number;
+  riskAmount: number;
+  capital: number;
+  rewardRiskRatio: number;
+  createdAt: string;
+}

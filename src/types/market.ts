@@ -81,12 +81,22 @@ export interface TradeRecord {
 
 export type WorkflowPhase = 'pre' | 'live' | 'close';
 
+export interface WorkflowTask {
+  id: string;
+  phase: WorkflowPhase;
+  title: string;
+  detail: string;
+  sourceTitle?: string;
+  importedAt?: string;
+}
+
 export interface DailyWorkflow {
   id: string;
   userId: string;
   date: string;
   checks: Record<string, boolean>;
   notes: Partial<Record<WorkflowPhase, string>>;
+  customTasks?: WorkflowTask[];
   updatedAt: string;
 }
 

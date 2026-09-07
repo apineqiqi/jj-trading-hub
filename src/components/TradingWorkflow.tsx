@@ -1,6 +1,7 @@
-import { Check, ChevronRight, Circle, Clock3, MoonStar, RotateCcw, ShieldAlert, Sunrise, Zap } from 'lucide-react';
+import { Check, ChevronRight, Circle, Clock3, MessageSquareText, MoonStar, RotateCcw, ShieldAlert, Sunrise, Trash2, Zap } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import type { DailyWorkflow, WorkflowPhase } from '../types/market';
+import type { DailyWorkflow, WorkflowPhase, WorkflowTask } from '../types/market';
+import { ChatTaskImporter } from './ChatTaskImporter';
 
 const phases: Array<{ id: WorkflowPhase; label: string; time: string; kicker: string; icon: typeof Sunrise; tasks: Array<{ id: string; title: string; detail: string }> }> = [
   { id: 'pre', label: '盘前', time: '开盘前', kicker: 'PRE-MARKET', icon: Sunrise, tasks: [
@@ -41,18 +42,33 @@ interface Props {
 
 export function TradingWorkflow({ record, ownerName, positions, attackSignals, positionPct, hidden, onChange }: Props) {
   const [activePhase, setActivePhase] = useState<WorkflowPhase>(phaseForNow());
+  const [importing, setImporting] = useState(false);
   const active = phases.find(item => item.id === activePhase) ?? phases[0];
-  const allTasks = useMemo(() => phases.flatMap(item => item.tasks), []);
+  const customTasks = record.customTasks ?? [];
+  const activeTasks = [...active.tasks, ...customTasks.filter(item => item.phase === activePhase)];
+  const allTasks = useMemo(() => [...phases.flatMap(item => item.tasks), ...(record.customTasks ?? [])], [record.customTasks]);
   const completed = allTasks.filter(item => record.checks[item.id]).length;
-  const phaseDone = (phase: typeof phases[number]) => phase.tasks.filter(item => record.checks[item.id]).length;
+  const phaseTasks = (phase: typeof phases[number]) => [...phase.tasks, ...customTasks.filter(item => item.phase === phase.id)];
+  const phaseDone = (phase: typeof phases[number]) => phaseTasks(phase).filter(item => record.checks[item.id]).length;
   const update = (next: Partial<DailyWorkflow>) => onChange({ ...record, ...next, updatedAt: new Date().toISOString() });
   const toggle = (id: string) => update({ checks: { ...record.checks, [id]: !record.checks[id] } });
+  const importTasks = (tasks: WorkflowTask[]) => {
+    update({ customTasks: [...customTasks, ...tasks] });
+    setActivePhase(tasks[0]?.phase ?? activePhase);
+    setImporting(false);
+  };
+  const clearImported = () => {
+    const imported = customTasks.filter(item => item.phase === activePhase);
+    if (!imported.length || !window.confirm(`移除${active.label}阶段从 ChatGPT 导入的 ${imported.length} 项任务？`)) return;
+    const removedIds = new Set(imported.map(item => item.id));
+    update({ customTasks: customTasks.filter(item => item.phase !== activePhase), checks: Object.fromEntries(Object.entries(record.checks).filter(([id]) => !removedIds.has(id))) });
+  };
   const ActiveIcon = active.icon;
 
   return <section className="workflow-page">
     <div className="workflow-hero">
       <div>
-        <span className="eyebrow">TRADING DAY COMMAND · V0.7</span>
+        <span className="eyebrow">TRADING DAY COMMAND · V1.1</span>
         <h2>今天，只执行有边界的决定</h2>
         <p>{record.date} · {ownerName} 的独立交易日流程。完成状态与阶段备注仅保存在当前浏览器。</p>
       </div>
@@ -68,7 +84,7 @@ export function TradingWorkflow({ record, ownerName, positions, attackSignals, p
         const done = phaseDone(phase);
         const PhaseIcon = phase.icon;
         return <button key={phase.id} className={`${activePhase === phase.id ? 'active' : ''} ${done === phase.tasks.length ? 'complete' : ''}`} onClick={() => setActivePhase(phase.id)}>
-          <span className="phase-index">0{index + 1}</span><PhaseIcon size={18}/><span><b>{phase.label}</b><small>{phase.time}</small></span><em>{done}/{phase.tasks.length}</em>
+          <span className="phase-index">0{index + 1}</span><PhaseIcon size={18}/><span><b>{phase.label}</b><small>{phase.time}</small></span><em>{done}/{phaseTasks(phase).length}</em>
         </button>;
       })}
     </div>
@@ -77,14 +93,15 @@ export function TradingWorkflow({ record, ownerName, positions, attackSignals, p
       <article className="card workflow-checks">
         <div className="workflow-card-head">
           <div><span className="eyebrow">{active.kicker}</span><h3><ActiveIcon size={20}/>{active.label}执行清单</h3></div>
-          <span className="phase-counter">{phaseDone(active)} / {active.tasks.length}</span>
+          <div className="workflow-head-actions"><button className="chat-import-trigger" onClick={() => setImporting(true)}><MessageSquareText size={14}/>从 ChatGPT 导入</button><span className="phase-counter">{phaseDone(active)} / {activeTasks.length}</span></div>
         </div>
         <div className="task-list">
-          {active.tasks.map(task => <button key={task.id} className={record.checks[task.id] ? 'done' : ''} onClick={() => toggle(task.id)}>
+          {activeTasks.map(task => <button key={task.id} className={record.checks[task.id] ? 'done' : ''} onClick={() => toggle(task.id)}>
             <span className="task-check">{record.checks[task.id] ? <Check size={16}/> : <Circle size={16}/>}</span>
-            <span><b>{task.title}</b><small>{task.detail}</small></span><ChevronRight size={15}/>
+            <span><b>{task.title}{'sourceTitle' in task && task.sourceTitle && <em className="chat-task-badge">CHATGPT</em>}</b><small>{task.detail}</small>{'sourceTitle' in task && task.sourceTitle && <small className="chat-task-source">来自：{task.sourceTitle}</small>}</span><ChevronRight size={15}/>
           </button>)}
         </div>
+        {customTasks.some(item => item.phase === activePhase) && <button className="clear-chat-tasks" onClick={clearImported}><Trash2 size={13}/>移除本阶段导入任务</button>}
         <label className="phase-note"><span>阶段记录</span><textarea value={record.notes[activePhase] ?? ''} onChange={event => update({ notes: { ...record.notes, [activePhase]: event.target.value } })} placeholder={`${active.label}发生了什么？记录事实、偏差和下一步。`}/></label>
       </article>
 
@@ -103,5 +120,6 @@ export function TradingWorkflow({ record, ownerName, positions, attackSignals, p
         </article>
       </aside>
     </div>
+    {importing && <ChatTaskImporter initialPhase={activePhase} onClose={() => setImporting(false)} onImport={importTasks}/>}
   </section>;
 }

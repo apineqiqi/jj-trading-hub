@@ -30,6 +30,8 @@ const phaseForNow = (): WorkflowPhase => {
   return minute < 570 ? 'pre' : minute < 900 ? 'live' : 'close';
 };
 
+const isImportedTask = (task: { id: string; title: string; detail: string } | WorkflowTask): task is WorkflowTask => 'phase' in task;
+
 interface Props {
   record: DailyWorkflow;
   ownerName: string;
@@ -98,7 +100,7 @@ export function TradingWorkflow({ record, ownerName, positions, attackSignals, p
         <div className="task-list">
           {activeTasks.map(task => <button key={task.id} className={record.checks[task.id] ? 'done' : ''} onClick={() => toggle(task.id)}>
             <span className="task-check">{record.checks[task.id] ? <Check size={16}/> : <Circle size={16}/>}</span>
-            <span><b>{task.title}{'sourceTitle' in task && task.sourceTitle && <em className="chat-task-badge">CHATGPT</em>}</b><small>{task.detail}</small>{'sourceTitle' in task && task.sourceTitle && <small className="chat-task-source">来自：{task.sourceTitle}</small>}</span><ChevronRight size={15}/>
+            <span><b>{task.title}{isImportedTask(task) && task.sourceTitle && <em className="chat-task-badge">CHATGPT</em>}</b><small>{task.detail}</small>{isImportedTask(task) && task.sourceTitle && <small className="chat-task-source">来自：{task.sourceTitle}</small>}</span><ChevronRight size={15}/>
           </button>)}
         </div>
         {customTasks.some(item => item.phase === activePhase) && <button className="clear-chat-tasks" onClick={clearImported}><Trash2 size={13}/>移除本阶段导入任务</button>}

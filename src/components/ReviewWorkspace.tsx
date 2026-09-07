@@ -1,5 +1,5 @@
 import { ArrowDownLeft, ArrowUpRight, BookOpen, Camera, Plus, Trash2, TrendingUp, X } from 'lucide-react';
-import { useMemo, useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import type { PortfolioSnapshot, TradeRecord, TradeSide } from '../types/market';
 
 const money = new Intl.NumberFormat('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -37,11 +37,12 @@ function EquityCurve({ snapshots }: { snapshots: PortfolioSnapshot[] }) {
   </div>;
 }
 
-export function ReviewWorkspace({ snapshots, trades, currentSnapshot, hidden = false, onAddSnapshot, onDeleteSnapshot, onAddTrade, onDeleteTrade }: {
+export function ReviewWorkspace({ snapshots, trades, currentSnapshot, hidden = false, evidencePanel, onAddSnapshot, onDeleteSnapshot, onAddTrade, onDeleteTrade }: {
   snapshots: PortfolioSnapshot[];
   trades: TradeRecord[];
   currentSnapshot: Omit<PortfolioSnapshot, 'id' | 'date' | 'note'>;
   hidden?: boolean;
+  evidencePanel?: ReactNode;
   onAddSnapshot: (item: PortfolioSnapshot) => void;
   onDeleteSnapshot: (item: PortfolioSnapshot) => void;
   onAddTrade: (item: TradeRecord) => void;
@@ -84,9 +85,11 @@ export function ReviewWorkspace({ snapshots, trades, currentSnapshot, hidden = f
 
   return <>
     <section className="review-hero">
-      <div><span className="eyebrow">PERFORMANCE ARCHIVE · V0.4</span><h2>让每次决策留下证据</h2><p>账户快照负责回答“结果如何”，交易日志负责回答“当时为什么这样做”。所有记录仍只保存在当前浏览器。</p></div>
+      <div><span className="eyebrow">DECISION EVIDENCE · V0.9</span><h2>让每次决策留下证据</h2><p>账户快照回答“结果如何”，交易日志回答“为什么执行”，盘面截图则保留当时真正看见的事实。所有记录仍只保存在当前浏览器。</p></div>
       <div className="review-actions"><button className="ghost-btn" onClick={() => setTradeForm(true)}><BookOpen size={15}/>记一笔交易</button><button className="primary-btn" onClick={() => setSnapshotForm(true)}><Camera size={15}/>记录账户快照</button></div>
     </section>
+
+    {evidencePanel}
 
     <section className="review-summary">
       <div className="curve-card card">

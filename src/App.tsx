@@ -54,7 +54,7 @@ export default function App() {
   const workflowPositions = positions.filter(item => item.userId === workflowUserId);
   const workflowWatchlist = watchlist.filter(item => item.userId === workflowUserId);
   const today = new Date().toLocaleDateString('sv-SE');
-  const workflow = workflows.find(item => item.userId === workflowUserId && item.date === today) ?? { id: `${workflowUserId}-${today}`, userId: workflowUserId, date: today, checks: {}, notes: {}, updatedAt: new Date().toISOString() };
+  const workflow: DailyWorkflow = workflows.find(item => item.userId === workflowUserId && item.date === today) ?? { id: `${workflowUserId}-${today}`, userId: workflowUserId, date: today, checks: {}, notes: {}, updatedAt: new Date().toISOString() };
 
   const trackedSymbols = useMemo(() => Array.from(new Set([...positions, ...watchlist].map(item => item.symbol))).sort().join(','), [positions, watchlist]);
   const refreshQuotes = useCallback(async () => {
@@ -119,7 +119,9 @@ export default function App() {
   const workflowPositionPct = workflowPortfolio + workflowCash ? workflowPortfolio / (workflowPortfolio + workflowCash) * 100 : 0;
   const money = (value: number) => `¥${value.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const privateValue = (value: string) => privacyMode ? '••••••' : value;
-  const workflowCompleted = Object.values(workflow.checks).filter(Boolean).length;
+  const workflowTaskTotal = 12 + (workflow.customTasks?.length ?? 0);
+  const workflowTaskIds = new Set(workflow.customTasks?.map(item => item.id) ?? []);
+  const workflowCompleted = Object.entries(workflow.checks).filter(([id, done]) => done && (!id.startsWith('chat-') || workflowTaskIds.has(id))).length;
   const disciplineProfile = riskProfiles.find(item => item.userId === workflowUserId) ?? { userId: workflowUserId, singlePositionPct: 35, portfolioPct: 80, tradeRiskPct: 1, dailyLossPct: 2 };
   const saveWorkflow = (next: DailyWorkflow) => setWorkflows(current => current.some(item => item.id === next.id) ? current.map(item => item.id === next.id ? next : item) : [...current, next]);
 
@@ -159,13 +161,13 @@ export default function App() {
 
   return <div className="app-shell">
     <header>
-      <div><div className="brand-line"><span className="eyebrow">JJ PERSONAL TRADING OS</span><span className="version-badge">V1.0</span></div><h1>JJ 交易中枢</h1></div>
+      <div><div className="brand-line"><span className="eyebrow">JJ PERSONAL TRADING OS</span><span className="version-badge">V1.1</span></div><h1>JJ 交易中枢</h1></div>
       <div className="header-actions"><UserSwitcher users={users} value={selectedUserId} onChange={setActiveUserId} onManage={() => setManagingUsers(true)}/><button className={`privacy-toggle ${privacyMode ? 'active' : ''}`} aria-pressed={privacyMode} onClick={() => setPrivacyMode(value => !value)}>{privacyMode ? <Eye size={17}/> : <EyeOff size={17}/>}<span>{privacyMode ? '显示持仓' : '隐藏持仓'}</span></button><button className={`icon-btn alert-trigger ${triggeredAlerts ? 'hot' : ''}`} title="条件提醒" onClick={() => setAlertsOpen(true)}><BellRing size={20}/>{triggeredAlerts > 0 && <span>{triggeredAlerts}</span>}</button></div>
     </header>
 
     <nav className="workspace-nav" aria-label="工作区">
       <button className={view === 'overview' ? 'active' : ''} onClick={() => setView('overview')}><LayoutDashboard size={16}/>总览</button>
-      <button className={view === 'workflow' ? 'active' : ''} onClick={() => setView('workflow')}><ListChecks size={16}/>交易日 <span>{workflowCompleted}/12</span></button>
+      <button className={view === 'workflow' ? 'active' : ''} onClick={() => setView('workflow')}><ListChecks size={16}/>交易日 <span>{workflowCompleted}/{workflowTaskTotal}</span></button>
       <button className={view === 'portfolio' ? 'active' : ''} onClick={() => setView('portfolio')}><BriefcaseBusiness size={16}/>持仓 <span>{scopedPositions.length}</span></button>
       <button className={view === 'watchlist' ? 'active' : ''} onClick={() => setView('watchlist')}><ListFilter size={16}/>观察池 <span>{scopedWatchlist.length}</span></button>
       <button className={view === 'risk' ? 'active' : ''} onClick={() => setView('risk')}><ShieldAlert size={16}/>风控 <span>{visibleRiskPlans.length}</span></button>
@@ -179,7 +181,7 @@ export default function App() {
       {view === 'overview' && <>
         <section className="account-scope"><span style={{ background: activeProfile?.color ?? '#f2b84b' }}></span><UsersRound size={15}/><b>{activeProfile?.name ?? '全账户'}</b><small>{activeProfile ? '独立用户视角' : `${activeUsers.length} 位用户的合并视角`}</small></section>
         <button className="workflow-launch" onClick={() => setView('workflow')}>
-          <span className="workflow-launch-icon"><ListChecks size={19}/></span><span><small>今日交易流程 · {workflowOwner}</small><b>{workflowCompleted === 12 ? '今日流程已完成' : `还有 ${12 - workflowCompleted} 项待确认`}</b></span><span className="workflow-launch-progress"><i style={{ width: `${workflowCompleted / 12 * 100}%` }}/></span><em>{workflowCompleted}/12</em><span className="workflow-launch-cta">继续 <span>→</span></span>
+          <span className="workflow-launch-icon"><ListChecks size={19}/></span><span><small>今日交易流程 · {workflowOwner}</small><b>{workflowCompleted === workflowTaskTotal ? '今日流程已完成' : `还有 ${workflowTaskTotal - workflowCompleted} 项待确认`}</b></span><span className="workflow-launch-progress"><i style={{ width: `${workflowCompleted / workflowTaskTotal * 100}%` }}/></span><em>{workflowCompleted}/{workflowTaskTotal}</em><span className="workflow-launch-cta">继续 <span>→</span></span>
         </button>
         <section className="hero card">
           <div><span className="eyebrow">{accountSnapshot.asOf}</span><h2>设备 / 测试 / 激光强于光模块核心</h2><p>已同步 JJ 最新账户快照。今日不是 CPO 整体 β 行情，联讯与炬光相对占优；寒武纪仍处等待确认阶段。</p></div>

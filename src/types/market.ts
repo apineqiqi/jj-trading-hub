@@ -89,3 +89,18 @@ export interface DailyWorkflow {
   notes: Partial<Record<WorkflowPhase, string>>;
   updatedAt: string;
 }
+
+export type AlertDirection = 'above' | 'below';
+
+export interface PriceAlert {
+  id: string;
+  userId: string;
+  symbol: string;
+  name: string;
+  direction: AlertDirection;
+  target: number;
+  label: string;
+  enabled: boolean;
+  acknowledged: boolean;
+  createdAt: string;
+}

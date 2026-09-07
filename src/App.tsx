@@ -1,4 +1,4 @@
-import { Activity, BellRing, BriefcaseBusiness, ChartNoAxesCombined, Eye, EyeOff, Gauge, LayoutDashboard, ListChecks, ListFilter, ShieldCheck, UsersRound } from 'lucide-react';
+import { Activity, BellRing, BriefcaseBusiness, ChartNoAxesCombined, Eye, EyeOff, Gauge, LayoutDashboard, ListChecks, ListFilter, ShieldAlert, ShieldCheck, UsersRound } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCenter } from './components/AlertCenter';
 import { DecisionTable } from './components/DecisionTable';
@@ -6,6 +6,7 @@ import { EditorModal } from './components/EditorModal';
 import { MarketPulse, type QuoteStatus } from './components/MarketPulse';
 import { PortfolioTable } from './components/PortfolioTable';
 import { ReviewWorkspace } from './components/ReviewWorkspace';
+import { RiskWorkbench } from './components/RiskWorkbench';
 import { StatCard } from './components/StatCard';
 import { TradingWorkflow } from './components/TradingWorkflow';
 import { UserManagerModal } from './components/UserManagerModal';
@@ -17,9 +18,9 @@ import { seedAlertRules } from './data/alerts';
 import { defaultUser, migratePositions, migrateUsers, migrateWatchlist } from './data/migration';
 import { usePersistentState } from './hooks/usePersistentState';
 import { fetchMarketQuotes } from './services/quotes';
-import type { DailyWorkflow, PortfolioSnapshot, Position, PriceAlert, TradeRecord, UserProfile, VisualReviewRecord, WatchItem } from './types/market';
+import type { DailyWorkflow, PortfolioSnapshot, Position, PriceAlert, RiskPlan, RiskProfile, TradeRecord, UserProfile, VisualReviewRecord, WatchItem } from './types/market';
 
-type View = 'overview' | 'workflow' | 'portfolio' | 'watchlist' | 'review';
+type View = 'overview' | 'workflow' | 'portfolio' | 'watchlist' | 'risk' | 'review';
 type EditorTarget = { kind: 'position'; value?: Position } | { kind: 'watch'; value?: WatchItem };
 
 export default function App() {
@@ -34,6 +35,8 @@ export default function App() {
   const [workflows, setWorkflows] = usePersistentState<DailyWorkflow[]>('jj-trading-v07-workflows', []);
   const [alerts, setAlerts] = usePersistentState<PriceAlert[]>('jj-trading-v08-alerts', seedAlertRules(migrateWatchlist()));
   const [visualReviews, setVisualReviews] = usePersistentState<VisualReviewRecord[]>('jj-trading-v09-visual-reviews', []);
+  const [riskProfiles, setRiskProfiles] = usePersistentState<RiskProfile[]>('jj-trading-v10-risk-profiles', []);
+  const [riskPlans, setRiskPlans] = usePersistentState<RiskPlan[]>('jj-trading-v10-risk-plans', []);
   const [editor, setEditor] = useState<EditorTarget | null>(null);
   const [managingUsers, setManagingUsers] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
@@ -106,6 +109,7 @@ export default function App() {
   const attackSignals = scopedWatchlist.filter(item => item.state === '转强').length;
   const alertPrices = new Map(watchlist.map(item => [`${item.userId ?? defaultUser.id}-${item.symbol}`, item.price]));
   const visibleAlerts = selectedUserId === 'all' ? alerts : alerts.filter(rule => rule.userId === selectedUserId);
+  const visibleRiskPlans = selectedUserId === 'all' ? riskPlans : riskPlans.filter(plan => plan.userId === selectedUserId);
   const triggeredAlerts = visibleAlerts.filter(rule => {
     const price = alertPrices.get(`${rule.userId}-${rule.symbol}`);
     return price !== undefined && rule.enabled && !rule.acknowledged && (rule.direction === 'above' ? price >= rule.target : price <= rule.target);
@@ -116,6 +120,7 @@ export default function App() {
   const money = (value: number) => `¥${value.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const privateValue = (value: string) => privacyMode ? '••••••' : value;
   const workflowCompleted = Object.values(workflow.checks).filter(Boolean).length;
+  const disciplineProfile = riskProfiles.find(item => item.userId === workflowUserId) ?? { userId: workflowUserId, singlePositionPct: 35, portfolioPct: 80, tradeRiskPct: 1, dailyLossPct: 2 };
   const saveWorkflow = (next: DailyWorkflow) => setWorkflows(current => current.some(item => item.id === next.id) ? current.map(item => item.id === next.id ? next : item) : [...current, next]);
 
   const saveEditor = (value: Position | WatchItem) => {
@@ -135,6 +140,8 @@ export default function App() {
   const removeSnapshot = (item: PortfolioSnapshot) => window.confirm(`删除 ${item.date} 的账户快照？`) && setSnapshots(current => current.filter(x => x.id !== item.id));
   const removeTrade = (item: TradeRecord) => window.confirm(`删除 ${item.date} ${item.name} 的交易记录？`) && setTrades(current => current.filter(x => x.id !== item.id));
   const removeVisualReview = (item: VisualReviewRecord) => window.confirm(`删除 ${item.date} ${item.name} 的盘面证据？`) && setVisualReviews(current => current.filter(x => x.id !== item.id));
+  const removeRiskPlan = (item: RiskPlan) => window.confirm(`删除 ${item.name} 的交易计划？`) && setRiskPlans(current => current.filter(x => x.id !== item.id));
+  const saveRiskProfile = (profile: RiskProfile) => setRiskProfiles(current => current.some(item => item.userId === profile.userId) ? current.map(item => item.userId === profile.userId ? profile : item) : [...current, profile]);
 
   const addUser = (name: string, color: string) => {
     const user = { id: crypto.randomUUID(), name, color };
@@ -152,7 +159,7 @@ export default function App() {
 
   return <div className="app-shell">
     <header>
-      <div><div className="brand-line"><span className="eyebrow">JJ PERSONAL TRADING OS</span><span className="version-badge">V0.9</span></div><h1>JJ 交易中枢</h1></div>
+      <div><div className="brand-line"><span className="eyebrow">JJ PERSONAL TRADING OS</span><span className="version-badge">V1.0</span></div><h1>JJ 交易中枢</h1></div>
       <div className="header-actions"><UserSwitcher users={users} value={selectedUserId} onChange={setActiveUserId} onManage={() => setManagingUsers(true)}/><button className={`privacy-toggle ${privacyMode ? 'active' : ''}`} aria-pressed={privacyMode} onClick={() => setPrivacyMode(value => !value)}>{privacyMode ? <Eye size={17}/> : <EyeOff size={17}/>}<span>{privacyMode ? '显示持仓' : '隐藏持仓'}</span></button><button className={`icon-btn alert-trigger ${triggeredAlerts ? 'hot' : ''}`} title="条件提醒" onClick={() => setAlertsOpen(true)}><BellRing size={20}/>{triggeredAlerts > 0 && <span>{triggeredAlerts}</span>}</button></div>
     </header>
 
@@ -161,6 +168,7 @@ export default function App() {
       <button className={view === 'workflow' ? 'active' : ''} onClick={() => setView('workflow')}><ListChecks size={16}/>交易日 <span>{workflowCompleted}/12</span></button>
       <button className={view === 'portfolio' ? 'active' : ''} onClick={() => setView('portfolio')}><BriefcaseBusiness size={16}/>持仓 <span>{scopedPositions.length}</span></button>
       <button className={view === 'watchlist' ? 'active' : ''} onClick={() => setView('watchlist')}><ListFilter size={16}/>观察池 <span>{scopedWatchlist.length}</span></button>
+      <button className={view === 'risk' ? 'active' : ''} onClick={() => setView('risk')}><ShieldAlert size={16}/>风控 <span>{visibleRiskPlans.length}</span></button>
       <button className={view === 'review' ? 'active' : ''} onClick={() => setView('review')}><ChartNoAxesCombined size={16}/>复盘 <span>{snapshots.length + visualReviews.length}</span></button>
       <div className="save-state"><i></i>本机已保存</div>
     </nav>
@@ -201,6 +209,20 @@ export default function App() {
 
       {view === 'workflow' && <TradingWorkflow record={workflow} ownerName={workflowOwner} positions={workflowPositions.length} attackSignals={workflowWatchlist.filter(item => item.state === '转强').length} positionPct={workflowPositionPct} hidden={privacyMode} onChange={saveWorkflow}/>}
 
+      {view === 'risk' && <RiskWorkbench
+        users={users}
+        selectedUserId={selectedUserId}
+        positions={positions}
+        watchlist={watchlist}
+        cashByUser={{ [defaultUser.id]: accountSnapshot.availableCash }}
+        profiles={riskProfiles}
+        plans={riskPlans}
+        hidden={privacyMode}
+        onProfileChange={saveRiskProfile}
+        onAddPlan={item => setRiskPlans(current => [item, ...current])}
+        onDeletePlan={removeRiskPlan}
+      />}
+
       {view === 'review' && <ReviewWorkspace
         hidden={privacyMode}
         snapshots={snapshots}
@@ -224,7 +246,7 @@ export default function App() {
       <section className="card checklist">
         <div className="section-title"><ShieldCheck size={18}/>执行纪律</div>
         <p>新仓必须同时具备：触发价、失效价、仓位动作。事实口径未确认时，只输出条件判断，不给确定性加减仓结论。</p>
-        <div className="chips"><span>单股≤35%</span><span>组合≤80%</span><span>单笔风险≤1%</span><span>日亏损≤2%</span><span>计划盈亏比≥2</span></div>
+        <div className="chips"><span>单股≤{disciplineProfile.singlePositionPct}%</span><span>组合≤{disciplineProfile.portfolioPct}%</span><span>单笔风险≤{disciplineProfile.tradeRiskPct}%</span><span>日亏损≤{disciplineProfile.dailyLossPct}%</span><span>计划盈亏比≥2</span></div>
       </section>
     </main>
 

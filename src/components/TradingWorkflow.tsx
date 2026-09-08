@@ -34,6 +34,7 @@ const phaseForNow = (): WorkflowPhase => {
 const isImportedTask = (task: { id: string; title: string; detail: string } | WorkflowTask): task is WorkflowTask => 'phase' in task;
 
 interface Props {
+  onImportStrategy: () => void;
   record: DailyWorkflow;
   ownerName: string;
   positions: number;
@@ -45,7 +46,7 @@ interface Props {
   onChange: (record: DailyWorkflow) => void;
 }
 
-export function TradingWorkflow({ record, ownerName, positions, attackSignals, positionPct, portfolioLimit, cashKnown, hidden, onChange }: Props) {
+export function TradingWorkflow({ record, ownerName, positions, attackSignals, positionPct, portfolioLimit, cashKnown, hidden, onChange, onImportStrategy }: Props) {
   const [activePhase, setActivePhase] = useState<WorkflowPhase>(phaseForNow());
   const [importing, setImporting] = useState(false);
   const [editing, setEditing] = useState<WorkflowTask | null>(null);
@@ -102,7 +103,7 @@ export function TradingWorkflow({ record, ownerName, positions, attackSignals, p
       <article className="card workflow-checks">
         <div className="workflow-card-head">
           <div><span className="eyebrow">{active.kicker}</span><h3><ActiveIcon size={20}/>{active.label}执行清单</h3></div>
-          <div className="workflow-head-actions"><button className="chat-import-trigger" onClick={() => setImporting(true)}><MessageSquareText size={14}/>从 ChatGPT 导入</button><span className="phase-counter">{phaseDone(active)} / {activeTasks.length}</span></div>
+          <div className="workflow-head-actions"><button className="chat-import-trigger" onClick={onImportStrategy}>AI 策略快导</button><button className="chat-import-trigger" onClick={() => setImporting(true)}><MessageSquareText size={14}/>从 ChatGPT 导入</button><span className="phase-counter">{phaseDone(active)} / {activeTasks.length}</span></div>
         </div>
         <div className="task-list">
           {activeTasks.map(task => <div className="workflow-task-row" key={task.id}><button className={record.checks[task.id] ? 'done' : ''} onClick={() => toggle(task.id)}>

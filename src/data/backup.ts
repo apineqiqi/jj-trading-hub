@@ -18,7 +18,7 @@ const validators: Record<string, Validator> = {
   'jj-trading-v04-trades': rows({ id: str, ...user, date: str, side: choice('买入', '卖出'), symbol: str, name: str, shares: num, price: num, fee: num, note: optional(str) }),
   'jj-trading-privacy-mode': bool,
   'jj-trading-v07-workflows': rows({ id: str, userId: str, date: str, checks: dictionary(bool), notes: dictionary(str), updatedAt: str, customTasks: optional(rows({ id: str, phase: choice('pre', 'live', 'close'), title: str, detail: str, sourceTitle: optional(str), importedAt: optional(str) })) }),
-  'jj-trading-v08-alerts': rows({ id: str, userId: str, symbol: str, name: str, direction: choice('above', 'below'), target: num, label: str, enabled: bool, acknowledged: bool, createdAt: str, planId: optional(str), planLevel: optional(choice('entry', 'stop', 'target')) }),
+  'jj-trading-v08-alerts': rows({ id: str, userId: str, symbol: str, name: str, direction: choice('above', 'below'), target: num, label: str, enabled: bool, acknowledged: bool, createdAt: str, planId: optional(str), planLevel: optional(choice('entry', 'stop', 'target')), sourceTitle: optional(str) }),
   'jj-trading-v09-visual-reviews': rows({ id: str, userId: str, date: str, symbol: str, name: str, moment: choice('pre', 'live', 'close'), bias: choice('bullish', 'neutral', 'bearish'), imageDataUrl: value => typeof value === 'string' && /^data:image\/(webp|png|jpeg);base64,/.test(value), imageName: str, fact: str, judgment: str, nextCondition: str, createdAt: str }),
   'jj-trading-v10-risk-profiles': rows({ userId: str, singlePositionPct: num, portfolioPct: num, tradeRiskPct: num, dailyLossPct: num }),
   'jj-trading-v10-risk-plans': rows({ id: str, userId: str, symbol: str, name: str, entry: num, stop: num, target: num, shares: num, riskAmount: num, capital: num, rewardRiskRatio: num, createdAt: str }),
@@ -28,7 +28,7 @@ const validators: Record<string, Validator> = {
 export type BackupData = Record<string, unknown>;
 export function parseBackup(raw: string): { data: BackupData; createdAt: string } {
   const parsed: unknown = JSON.parse(raw);
-  if (!object(parsed) || parsed.app !== 'jj-trading-hub' || ![12, 13].includes(Number(parsed.version)) || typeof parsed.version !== 'number' || !object(parsed.data) || typeof parsed.createdAt !== 'string') throw new Error('请选择 V1.2 或 V1.3 导出的完整备份文件');
+  if (!object(parsed) || parsed.app !== 'jj-trading-hub' || ![12, 13, 14].includes(Number(parsed.version)) || typeof parsed.version !== 'number' || !object(parsed.data) || typeof parsed.createdAt !== 'string') throw new Error('请选择 V1.2–V1.4 导出的完整备份文件');
   const data = parsed.data;
   if (Object.keys(data).length !== Object.keys(validators).length || !Object.entries(validators).every(([key, test]) => test(data[key]))) throw new Error('备份内容不完整或字段无效，未修改本机数据');
   const users = data['jj-trading-v06-users'] as Array<{ id: string }>;
@@ -56,18 +56,18 @@ export function parseBackup(raw: string): { data: BackupData; createdAt: string 
 }
 
 export function downloadBackup(data: BackupData, suffix = '') {
-  const blob = new Blob([JSON.stringify({ app: 'jj-trading-hub', version: 13, createdAt: new Date().toISOString(), data }, null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify({ app: 'jj-trading-hub', version: 14, createdAt: new Date().toISOString(), data }, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `jj-trading-v1.3-${new Date().toISOString().replace(/[:.]/g, '-')}${suffix}.json`;
+  link.download = `jj-trading-v1.4-${new Date().toISOString().replace(/[:.]/g, '-')}${suffix}.json`;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export function restoreBackup(data: BackupData) {
   // Validate even when called outside the preview UI.
-  parseBackup(JSON.stringify({ app: 'jj-trading-hub', version: 13, createdAt: new Date().toISOString(), data }));
+  parseBackup(JSON.stringify({ app: 'jj-trading-hub', version: 14, createdAt: new Date().toISOString(), data }));
   const previous = Object.keys(validators).map(key => [key, localStorage.getItem(key)] as const);
   try {
     Object.keys(validators).forEach(key => localStorage.setItem(key, JSON.stringify(data[key])));

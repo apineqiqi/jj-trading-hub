@@ -2,6 +2,30 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { extractTasks, parseExport, taskKey } from '../.test-build/data/chatTasks.js';
 import { parseBackup, restoreBackup } from '../.test-build/data/backup.js';
+import { createPlanAlerts, linkedToPlan } from '../.test-build/data/planAlerts.js';
+
+const plan = { id: 'plan1', userId: 'jj', symbol: '600001', name: '测试', entry: 10, stop: 9, target: 12, shares: 100, riskAmount: 100, capital: 1000, rewardRiskRatio: 2, createdAt: '2026-09-08T00:00:00Z' };
+test('plan rules use explicit entry direction, independent price boundaries and stable dedupe', () => {
+  const rules = createPlanAlerts(plan, 'below', []);
+  assert.deepEqual(rules.map(r => [r.planLevel, r.direction, r.target]), [['entry', 'below', 10], ['stop', 'below', 9], ['target', 'above', 12]]);
+  rules[0].enabled = false; rules[0].acknowledged = true;
+  assert.deepEqual(createPlanAlerts(plan, 'above', rules), []);
+  assert.equal(rules[0].enabled, false);
+  assert.equal(createPlanAlerts(plan, 'above', rules.slice(1))[0].direction, 'above');
+  assert.equal(createPlanAlerts({ ...plan, userId: 'alice' }, 'above', rules).length, 3);
+  assert.equal(linkedToPlan(rules[0], { ...plan, userId: 'alice' }), false);
+  assert.throws(() => createPlanAlerts({ ...plan, stop: 11 }, 'above', []));
+  assert.throws(() => createPlanAlerts({ ...plan, entry: Infinity }, 'above', []));
+});
+
+test('V1.3 backups preserve linked rules and reject orphan, cross-account and duplicate links', () => {
+  const data = fixture(); data['jj-trading-v10-risk-plans'] = [plan]; data['jj-trading-v08-alerts'] = createPlanAlerts(plan, 'above', []);
+  const v13 = value => JSON.stringify({ app: 'jj-trading-hub', version: 13, createdAt: plan.createdAt, data: value });
+  assert.deepEqual(parseBackup(v13(data)).data, data);
+  assert.throws(() => parseBackup(v13({ ...data, 'jj-trading-v10-risk-plans': [] })), /来源无效/);
+  assert.throws(() => parseBackup(v13({ ...data, 'jj-trading-v10-risk-plans': [{ ...plan, symbol: '600002' }] })), /来源无效/);
+  assert.throws(() => parseBackup(v13({ ...data, 'jj-trading-v08-alerts': [...data['jj-trading-v08-alerts'], { ...data['jj-trading-v08-alerts'][0], id: 'duplicate' }] })), /重复/);
+});
 
 test('conversation import selects only the current branch and retains roles', () => {
   const node = (id, parent, text, role = 'assistant') => ({ parent, message: { id, author: { role }, content: { parts: [text] } } });

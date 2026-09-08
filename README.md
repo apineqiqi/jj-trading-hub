@@ -1,6 +1,21 @@
 # JJ 交易中枢
 
-个人交易中枢 V1.1。目标不是通用行情 App，而是服务 JJ 及不同账户用户的真实持仓、关注池、交易规则和每日决策。
+个人交易中枢 V1.2。目标不是通用行情 App，而是服务 JJ 及不同账户用户的真实持仓、关注池、交易规则和每日决策。
+
+## V1.2 账户数据与可编辑任务
+
+- 资金与备份入口：按用户维护现金；未录入与零余额明确区分，总览与风控读取同一余额
+- 交易日志和账户快照增加用户归属；旧记录保留并逐条确认归属，全账户不混绘资产曲线
+- 完整备份包含现金、持仓、观察池、任务、提醒、风控计划和截图；导入前校验和预览，覆盖前二次确认，写入失败尝试回退
+- 页面显示实际保存结果，失败时可导出页面内尚未成功保存的数据
+- ChatGPT 导出按当前分支读取，默认选最新回复；支持搜索对话、选择具体消息和查看原文
+- 每条任务在导入前可编辑标题、完整详情、阶段；按阶段、标题及详情去重，不再限制为 18 项
+- 导入后支持单条编辑、阶段移动和删除；移动保留勾选状态，删除同步清理完成记录
+- 修复导入后阶段完成样式，风险仪表读取账户组合上限
+- 首页旧市场判断和决策表明确标注历史参考
+- 沿用现有深色工作台风格，兼容手机端
+
+旧版没有账户归属的记录不会自动分配到 JJ，请在复盘页确认。新账户请先补齐现金。交易日志仍为记录，不会自动改变持仓和现金。备份文件含完整个人数据，请自行妥善保存。
 
 ## V1.1 ChatGPT 对话任务导入
 
@@ -111,11 +126,18 @@ npm run dev
 
 ## GitHub Pages 部署
 
-本仓库已内置 `.github/workflows/deploy-pages.yml`。把代码推送到 GitHub 的 `main` 分支后：
+本仓库已内置 `.github/workflows/static.yml`。把代码推送到 GitHub 的 `main` 分支后：
 
 1. 打开仓库 **Settings → Pages**。
 2. 在 **Build and deployment → Source** 中选择 **GitHub Actions**。
-3. 打开 **Actions** 查看 `Deploy JJ Trading Hub to GitHub Pages` 工作流。
+3. 打开 **Actions** 查看 `Deploy Vite site to Pages` 工作流。
 4. 部署完成后，Pages 页面会显示可访问网址。
 
-Vite 已使用相对资源路径，因此既支持 `用户名.github.io/仓库名/`，也方便后续绑定自定义域名。
+Vite 的 base 为 `/jj-trading-hub/`；发布流程安装锁定依赖、运行数据测试、构建后仅上传 `dist`。
+
+## V1.2 验证
+
+- `npm test`：对话分支、长条件、阶段分配、去重、备份校验和恢复失败回退。
+- `npm run build`：类型检查和生产打包。
+- 浏览器验收：先运行 `python tests/serve.py`，再在已安装 Playwright 的环境运行 `node tests/ui.test.mjs`；使用独立无头 Edge 与测试数据，覆盖账户隔离、任务编辑、恢复和保存失败。截图在被忽略的 `test-results/` 中。
+- Windows 受限环境若 realpath 解析祖先目录报 EPERM，可先运行类型检查，再运行 `node --preserve-symlinks --preserve-symlinks-main tests/build-local.mjs`；使用同一 React 插件和 Pages base，保持路径不解析符号链接。

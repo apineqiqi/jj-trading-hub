@@ -18,7 +18,7 @@ const validators: Record<string, Validator> = {
   'jj-trading-v04-trades': rows({ id: str, ...user, date: str, side: choice('买入', '卖出'), symbol: str, name: str, shares: num, price: num, fee: num, note: optional(str) }),
   'jj-trading-privacy-mode': bool,
   'jj-trading-v07-workflows': rows({ id: str, userId: str, date: str, checks: dictionary(bool), notes: dictionary(str), updatedAt: str, customTasks: optional(rows({ id: str, phase: choice('pre', 'live', 'close'), title: str, detail: str, sourceTitle: optional(str), importedAt: optional(str) })) }),
-  'jj-trading-v08-alerts': rows({ id: str, userId: str, symbol: str, name: str, direction: choice('above', 'below'), target: num, label: str, enabled: bool, acknowledged: bool, createdAt: str }),
+  'jj-trading-v08-alerts': rows({ id: str, userId: str, symbol: str, name: str, direction: choice('above', 'below'), target: num, label: str, enabled: bool, acknowledged: bool, createdAt: str, planId: optional(str), planLevel: optional(choice('entry', 'stop', 'target')) }),
   'jj-trading-v09-visual-reviews': rows({ id: str, userId: str, date: str, symbol: str, name: str, moment: choice('pre', 'live', 'close'), bias: choice('bullish', 'neutral', 'bearish'), imageDataUrl: value => typeof value === 'string' && /^data:image\/(webp|png|jpeg);base64,/.test(value), imageName: str, fact: str, judgment: str, nextCondition: str, createdAt: str }),
   'jj-trading-v10-risk-profiles': rows({ userId: str, singlePositionPct: num, portfolioPct: num, tradeRiskPct: num, dailyLossPct: num }),
   'jj-trading-v10-risk-plans': rows({ id: str, userId: str, symbol: str, name: str, entry: num, stop: num, target: num, shares: num, riskAmount: num, capital: num, rewardRiskRatio: num, createdAt: str }),
@@ -28,7 +28,7 @@ const validators: Record<string, Validator> = {
 export type BackupData = Record<string, unknown>;
 export function parseBackup(raw: string): { data: BackupData; createdAt: string } {
   const parsed: unknown = JSON.parse(raw);
-  if (!object(parsed) || parsed.app !== 'jj-trading-hub' || parsed.version !== 12 || !object(parsed.data) || typeof parsed.createdAt !== 'string') throw new Error('请选择 V1.2 导出的完整备份文件');
+  if (!object(parsed) || parsed.app !== 'jj-trading-hub' || ![12, 13].includes(Number(parsed.version)) || typeof parsed.version !== 'number' || !object(parsed.data) || typeof parsed.createdAt !== 'string') throw new Error('请选择 V1.2 或 V1.3 导出的完整备份文件');
   const data = parsed.data;
   if (Object.keys(data).length !== Object.keys(validators).length || !Object.entries(validators).every(([key, test]) => test(data[key]))) throw new Error('备份内容不完整或字段无效，未修改本机数据');
   const users = data['jj-trading-v06-users'] as Array<{ id: string }>;
@@ -43,22 +43,31 @@ export function parseBackup(raw: string): { data: BackupData; createdAt: string 
       if (new Set(recordIds).size !== recordIds.length) throw new Error('备份中存在重复记录编号');
     }
   }
+  const plans = data['jj-trading-v10-risk-plans'] as Array<{ id: string; userId: string; symbol: string }>;
+  const linked = new Set<string>();
+  for (const alert of data['jj-trading-v08-alerts'] as Array<{ userId: string; symbol: string; planId?: string; planLevel?: string }>) {
+    if (alert.planId === undefined && alert.planLevel === undefined) continue;
+    if (!alert.planId || !alert.planLevel || !plans.some(plan => plan.id === alert.planId && plan.userId === alert.userId && plan.symbol === alert.symbol)) throw new Error('计划提醒的账户、标的或来源无效');
+    const key = JSON.stringify([alert.userId, alert.planId, alert.planLevel]);
+    if (linked.has(key)) throw new Error('同一计划存在重复的价格边界提醒');
+    linked.add(key);
+  }
   return { data, createdAt: parsed.createdAt };
 }
 
 export function downloadBackup(data: BackupData, suffix = '') {
-  const blob = new Blob([JSON.stringify({ app: 'jj-trading-hub', version: 12, createdAt: new Date().toISOString(), data }, null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify({ app: 'jj-trading-hub', version: 13, createdAt: new Date().toISOString(), data }, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `jj-trading-v1.2-${new Date().toISOString().replace(/[:.]/g, '-')}${suffix}.json`;
+  link.download = `jj-trading-v1.3-${new Date().toISOString().replace(/[:.]/g, '-')}${suffix}.json`;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export function restoreBackup(data: BackupData) {
   // Validate even when called outside the preview UI.
-  parseBackup(JSON.stringify({ app: 'jj-trading-hub', version: 12, createdAt: new Date().toISOString(), data }));
+  parseBackup(JSON.stringify({ app: 'jj-trading-hub', version: 13, createdAt: new Date().toISOString(), data }));
   const previous = Object.keys(validators).map(key => [key, localStorage.getItem(key)] as const);
   try {
     Object.keys(validators).forEach(key => localStorage.setItem(key, JSON.stringify(data[key])));

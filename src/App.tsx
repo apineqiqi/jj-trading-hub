@@ -2,6 +2,8 @@ import { Activity, BellRing, BriefcaseBusiness, ChartNoAxesCombined, Eye, EyeOff
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCenter } from './components/AlertCenter';
 import { DataManager } from './components/DataManager';
+import { StrategyImporter } from './components/StrategyImporter';
+import { prepareStrategy, persistStrategy } from './data/strategyImport';
 import { DecisionTable } from './components/DecisionTable';
 import { EditorModal } from './components/EditorModal';
 import { MarketPulse, type QuoteStatus } from './components/MarketPulse';
@@ -29,6 +31,8 @@ export default function App() {
   const [view, setView] = useState<View>('overview');
   const saveStatus = useSaveStatus();
   const [dataOpen, setDataOpen] = useState(false);
+  const [strategyOpen, setStrategyOpen] = useState(false);
+  const [strategyResult, setStrategyResult] = useState('');
   const [cashByUser, setCashByUser] = usePersistentState<Record<string, number>>('jj-trading-v12-cash', { [defaultUser.id]: accountSnapshot.availableCash });
   const [users, setUsers] = usePersistentState<UserProfile[]>('jj-trading-v06-users', migrateUsers());
   const [activeUserId, setActiveUserId] = usePersistentState<string>('jj-trading-v06-active-user', 'all');
@@ -183,7 +187,7 @@ export default function App() {
 
   return <div className="app-shell">
     <header>
-      <div><div className="brand-line"><span className="eyebrow">JJ PERSONAL TRADING OS</span><span className="version-badge">V1.3</span></div><h1>JJ 交易中枢</h1></div>
+      <div><div className="brand-line"><span className="eyebrow">JJ PERSONAL TRADING OS</span><span className="version-badge">V1.4</span></div><h1>JJ 交易中枢</h1></div>
       <div className="header-actions"><UserSwitcher users={users} value={selectedUserId} onChange={setActiveUserId} onManage={() => setManagingUsers(true)}/><button className={`privacy-toggle ${privacyMode ? 'active' : ''}`} aria-pressed={privacyMode} onClick={() => setPrivacyMode(value => !value)}>{privacyMode ? <Eye size={17}/> : <EyeOff size={17}/>}<span>{privacyMode ? '显示持仓' : '隐藏持仓'}</span></button><button className={`icon-btn alert-trigger ${triggeredAlerts ? 'hot' : ''}`} title="条件提醒" onClick={() => setAlertsOpen(true)}><BellRing size={20}/>{triggeredAlerts > 0 && <span>{triggeredAlerts}</span>}</button></div>
     </header>
 
@@ -232,7 +236,7 @@ export default function App() {
         <WatchTable items={scopedWatchlist} users={users} showOwners={selectedUserId === 'all'} onAdd={() => setEditor({ kind: 'watch' })} onEdit={value => setEditor({ kind: 'watch', value })} onDelete={removeWatch}/>
       </>}
 
-      {view === 'workflow' && <TradingWorkflow record={workflow} ownerName={workflowOwner} positions={workflowPositions.length} attackSignals={workflowWatchlist.filter(item => item.state === '转强').length} positionPct={workflowPositionPct} cashKnown={cashByUser[workflowUserId] !== undefined} portfolioLimit={disciplineProfile.portfolioPct} hidden={privacyMode} onChange={saveWorkflow}/>}
+      {view === 'workflow' && <>{strategyResult && <p className="strategy-result" role="status">{strategyResult}<button className="ghost-btn" onClick={() => setAlertsOpen(true)}>查看提醒中心</button></p>}<TradingWorkflow onImportStrategy={() => { setStrategyOpen(true); setStrategyResult(''); }} record={workflow} ownerName={workflowOwner} positions={workflowPositions.length} attackSignals={workflowWatchlist.filter(item => item.state === '转强').length} positionPct={workflowPositionPct} cashKnown={cashByUser[workflowUserId] !== undefined} portfolioLimit={disciplineProfile.portfolioPct} hidden={privacyMode} onChange={saveWorkflow}/></>}
 
       {view === 'risk' && <RiskWorkbench
         users={users}
@@ -291,6 +295,15 @@ export default function App() {
 
     {editor && <EditorModal target={editor} users={activeUsers} defaultUserId={editorUserId} onClose={() => setEditor(null)} onSave={saveEditor}/>}
     {dataOpen && <DataManager users={users} cash={cashByUser} onCash={setCashByUser} data={backupData} onClose={() => setDataOpen(false)}/>}
+    {strategyOpen && <StrategyImporter users={users} selectedUserId={selectedUserId} workflows={workflows} alerts={alerts} watchlist={watchlist} onClose={() => setStrategyOpen(false)} onImport={(pack, selections, userId) => {
+      if (!activeUsers.some(user => user.id === userId)) throw new Error('请选择有效账户');
+      const result = prepareStrategy(pack, selections, userId, workflows, alerts, watchlist);
+      if (!(result.addedTasks + result.addedAlerts)) throw new Error('没有需要新增的任务或提醒');
+      persistStrategy(result.workflows, result.alerts);
+      setWorkflows(result.workflows); setAlerts(result.alerts); setActiveUserId(userId);
+      setStrategyResult(`已导入 ${result.addedTasks} 项任务、${result.addedAlerts} 条提醒。跳过 ${result.skippedTasks} 项重复任务、${result.skippedAlerts} 条重复提醒。`);
+      setStrategyOpen(false);
+    }}/>}
     {managingUsers && <UserManagerModal users={users} onClose={() => setManagingUsers(false)} onAdd={addUser} onUpdate={updateUser} onToggleArchive={toggleArchive}/>}
     {alertsOpen && <AlertCenter alerts={alerts} watchlist={watchlist} users={users} selectedUserId={selectedUserId} hidden={privacyMode} onClose={() => setAlertsOpen(false)} onChange={setAlerts}/>}
   </div>;

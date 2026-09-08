@@ -105,6 +105,7 @@ export interface DailyWorkflow {
 export type AlertDirection = 'above' | 'below';
 
 export interface PriceAlert {
+  sourceTitle?: string;
   planId?: string;
   planLevel?: 'entry' | 'stop' | 'target';
   id: string;

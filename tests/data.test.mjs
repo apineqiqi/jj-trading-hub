@@ -3,6 +3,52 @@ import assert from 'node:assert/strict';
 import { extractTasks, parseExport, taskKey } from '../.test-build/data/chatTasks.js';
 import { parseBackup, restoreBackup } from '../.test-build/data/backup.js';
 import { createPlanAlerts, linkedToPlan } from '../.test-build/data/planAlerts.js';
+import { parseStrategy, prepareStrategy, persistStrategy, reminderIssue } from '../.test-build/data/strategyImport.js';
+
+const strategy = { format: 'jj-strategy-v1', date: '2026-09-08', title: '策略测试', tasks: [
+  { phase: 'pre', title: '核对条件', detail: '等待确认，不自行补价格。', alert: null },
+  { phase: 'live', title: '观察明确价位', detail: '仅价格提示，执行前核对持仓。'.repeat(30), alert: { symbol: '600001', name: '测试', direction: 'above', target: 10 } },
+] };
+const strategyWatch = [{ userId: 'jj', symbol: '600001', name: '测试' }];
+test('strategy parser accepts fenced JSON, preserves conditions and rejects ambiguous or extra fields', () => {
+  assert.deepEqual(parseStrategy('```json\n' + JSON.stringify(strategy) + '\n```'), strategy);
+  for (const alert of [{ ...strategy.tasks[1].alert, target: '10-12' }, { ...strategy.tasks[1].alert, target: 0 }, { ...strategy.tasks[1].alert, direction: 'buy' }, { ...strategy.tasks[1].alert, symbol: 600001 }]) {
+    assert.throws(() => parseStrategy(JSON.stringify({ ...strategy, tasks: [{ ...strategy.tasks[1], alert }] })));
+  }
+  assert.throws(() => parseStrategy(JSON.stringify({ ...strategy, userId: 'injected' })));
+  assert.throws(() => parseStrategy(JSON.stringify({ ...strategy, date: '2026-02-30' })));
+});
+test('strategy import separates opt-in alerts and tasks and preserves paused duplicate rules', () => {
+  const choices = [{ task: true, alert: false }, { task: true, alert: true }];
+  const first = prepareStrategy(strategy, choices, 'jj', [], [], strategyWatch, strategy.date);
+  assert.equal(first.addedTasks, 2); assert.equal(first.addedAlerts, 1);
+  assert.equal(first.workflows[0].customTasks[1].detail, strategy.tasks[1].detail);
+  first.alerts[0].enabled = false;
+  const second = prepareStrategy(strategy, choices, 'jj', first.workflows, first.alerts, strategyWatch, strategy.date);
+  assert.equal(second.addedTasks + second.addedAlerts, 0);
+  assert.equal(second.alerts[0].enabled, false);
+  const onlyTasks = prepareStrategy(strategy, choices.map(c => ({ ...c, alert: false })), 'jj', [], [], [], strategy.date);
+  assert.equal(onlyTasks.addedAlerts, 0); assert.equal(onlyTasks.addedTasks, 2);
+  const other = prepareStrategy(strategy, choices, 'alice', first.workflows, first.alerts, [{ ...strategyWatch[0], userId: 'alice' }], strategy.date);
+  assert.equal(other.addedTasks, 2); assert.equal(other.addedAlerts, 1);
+  assert.throws(() => prepareStrategy(strategy, choices, 'jj', [], [], strategyWatch, '2026-09-09'), /策略日期/);
+  assert.match(reminderIssue(strategy.tasks[1], 'alice', strategyWatch), /观察池/);
+  assert.match(reminderIssue(strategy.tasks[1], 'jj', [{ ...strategyWatch[0], name: '不匹配' }]), /不一致/);
+});
+test('strategy multi-key storage failure rolls back instead of importing half a package', () => {
+  const state = new Map([['jj-trading-v07-workflows', 'old-workflows'], ['jj-trading-v08-alerts', 'old-alerts']]);
+  let writes = 0;
+  globalThis.localStorage = { getItem: k => state.get(k) ?? null, setItem: (k, v) => { if (++writes === 2) throw new Error('quota'); state.set(k, v); }, removeItem: k => state.delete(k) };
+  assert.throws(() => persistStrategy([], []), /已回退/);
+  assert.equal(state.get('jj-trading-v07-workflows'), 'old-workflows');
+  assert.equal(state.get('jj-trading-v08-alerts'), 'old-alerts');
+});
+test('V1.4 backup roundtrip retains strategy provenance and remains compatible with older versions', () => {
+  const data = fixture();
+  const result = prepareStrategy(strategy, [{ task: true, alert: false }, { task: true, alert: true }], 'jj', [], [], strategyWatch, strategy.date);
+  data['jj-trading-v07-workflows'] = result.workflows; data['jj-trading-v08-alerts'] = result.alerts;
+  assert.deepEqual(parseBackup(JSON.stringify({ app: 'jj-trading-hub', version: 14, createdAt: '2026-09-08T00:00:00Z', data })).data, data);
+});
 
 const plan = { id: 'plan1', userId: 'jj', symbol: '600001', name: '测试', entry: 10, stop: 9, target: 12, shares: 100, riskAmount: 100, capital: 1000, rewardRiskRatio: 2, createdAt: '2026-09-08T00:00:00Z' };
 test('plan rules use explicit entry direction, independent price boundaries and stable dedupe', () => {

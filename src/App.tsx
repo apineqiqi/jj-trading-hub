@@ -16,6 +16,7 @@ import { VisualReviewBoard } from './components/VisualReviewBoard';
 import { WatchTable } from './components/WatchTable';
 import { accountSnapshot, decisions, initialPositions, initialSnapshots, watchlist as initialWatchlist } from './data/mock';
 import { seedAlertRules } from './data/alerts';
+import { createPlanAlerts, linkedToPlan } from './data/planAlerts';
 import { defaultUser, migratePositions, migrateUsers, migrateWatchlist } from './data/migration';
 import { usePersistentState, useSaveStatus } from './hooks/usePersistentState';
 import { fetchMarketQuotes } from './services/quotes';
@@ -158,7 +159,12 @@ export default function App() {
   const removeSnapshot = (item: PortfolioSnapshot) => window.confirm(`删除 ${item.date} 的账户快照？`) && setSnapshots(current => current.filter(x => x.id !== item.id));
   const removeTrade = (item: TradeRecord) => window.confirm(`删除 ${item.date} ${item.name} 的交易记录？`) && setTrades(current => current.filter(x => x.id !== item.id));
   const removeVisualReview = (item: VisualReviewRecord) => window.confirm(`删除 ${item.date} ${item.name} 的盘面证据？`) && setVisualReviews(current => current.filter(x => x.id !== item.id));
-  const removeRiskPlan = (item: RiskPlan) => window.confirm(`删除 ${item.name} 的交易计划？`) && setRiskPlans(current => current.filter(x => x.id !== item.id));
+  const removeRiskPlan = (item: RiskPlan) => {
+    const count = alerts.filter(alert => linkedToPlan(alert, item)).length;
+    if (!window.confirm(`删除 ${item.name} 的交易计划及其 ${count} 条关联提醒？手动提醒不受影响。`)) return;
+    setAlerts(current => current.filter(alert => !linkedToPlan(alert, item)));
+    setRiskPlans(current => current.filter(x => x.id !== item.id));
+  };
   const saveRiskProfile = (profile: RiskProfile) => setRiskProfiles(current => current.some(item => item.userId === profile.userId) ? current.map(item => item.userId === profile.userId ? profile : item) : [...current, profile]);
 
   const addUser = (name: string, color: string) => {
@@ -177,7 +183,7 @@ export default function App() {
 
   return <div className="app-shell">
     <header>
-      <div><div className="brand-line"><span className="eyebrow">JJ PERSONAL TRADING OS</span><span className="version-badge">V1.2</span></div><h1>JJ 交易中枢</h1></div>
+      <div><div className="brand-line"><span className="eyebrow">JJ PERSONAL TRADING OS</span><span className="version-badge">V1.3</span></div><h1>JJ 交易中枢</h1></div>
       <div className="header-actions"><UserSwitcher users={users} value={selectedUserId} onChange={setActiveUserId} onManage={() => setManagingUsers(true)}/><button className={`privacy-toggle ${privacyMode ? 'active' : ''}`} aria-pressed={privacyMode} onClick={() => setPrivacyMode(value => !value)}>{privacyMode ? <Eye size={17}/> : <EyeOff size={17}/>}<span>{privacyMode ? '显示持仓' : '隐藏持仓'}</span></button><button className={`icon-btn alert-trigger ${triggeredAlerts ? 'hot' : ''}`} title="条件提醒" onClick={() => setAlertsOpen(true)}><BellRing size={20}/>{triggeredAlerts > 0 && <span>{triggeredAlerts}</span>}</button></div>
     </header>
 
@@ -236,6 +242,13 @@ export default function App() {
         cashByUser={cashByUser}
         profiles={riskProfiles}
         plans={riskPlans}
+        alerts={alerts}
+        onOpenAlerts={() => setAlertsOpen(true)}
+        onLinkAlerts={(plan, direction) => {
+          if (!watchlist.some(item => item.userId === plan.userId && item.symbol === plan.symbol)) throw new Error('该标的已不在此账户观察池，请先重新添加后生成提醒');
+          createPlanAlerts(plan, direction, alerts);
+          setAlerts(current => [...current, ...createPlanAlerts(plan, direction, current)]);
+        }}
         hidden={privacyMode}
         onProfileChange={saveRiskProfile}
         onAddPlan={item => setRiskPlans(current => [item, ...current])}

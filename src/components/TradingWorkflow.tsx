@@ -2,6 +2,7 @@ import { Check, ChevronRight, Circle, Clock3, MessageSquareText, MoonStar, Rotat
 import { useMemo, useState } from 'react';
 import type { DailyWorkflow, WorkflowPhase, WorkflowTask } from '../types/market';
 import { ChatTaskImporter } from './ChatTaskImporter';
+import { taskKey } from '../data/chatTasks';
 
 const phases: Array<{ id: WorkflowPhase; label: string; time: string; kicker: string; icon: typeof Sunrise; tasks: Array<{ id: string; title: string; detail: string }> }> = [
   { id: 'pre', label: '盘前', time: '开盘前', kicker: 'PRE-MARKET', icon: Sunrise, tasks: [
@@ -38,13 +39,17 @@ interface Props {
   positions: number;
   attackSignals: number;
   positionPct: number;
+  portfolioLimit: number;
+  cashKnown: boolean;
   hidden: boolean;
   onChange: (record: DailyWorkflow) => void;
 }
 
-export function TradingWorkflow({ record, ownerName, positions, attackSignals, positionPct, hidden, onChange }: Props) {
+export function TradingWorkflow({ record, ownerName, positions, attackSignals, positionPct, portfolioLimit, cashKnown, hidden, onChange }: Props) {
   const [activePhase, setActivePhase] = useState<WorkflowPhase>(phaseForNow());
   const [importing, setImporting] = useState(false);
+  const [editing, setEditing] = useState<WorkflowTask | null>(null);
+  const [taskError, setTaskError] = useState('');
   const active = phases.find(item => item.id === activePhase) ?? phases[0];
   const customTasks = record.customTasks ?? [];
   const activeTasks = [...active.tasks, ...customTasks.filter(item => item.phase === activePhase)];
@@ -55,7 +60,9 @@ export function TradingWorkflow({ record, ownerName, positions, attackSignals, p
   const update = (next: Partial<DailyWorkflow>) => onChange({ ...record, ...next, updatedAt: new Date().toISOString() });
   const toggle = (id: string) => update({ checks: { ...record.checks, [id]: !record.checks[id] } });
   const importTasks = (tasks: WorkflowTask[]) => {
-    update({ customTasks: [...customTasks, ...tasks] });
+    const seen = new Set(customTasks.map(taskKey));
+    const unique = tasks.filter(task => { const key = taskKey(task); if (seen.has(key)) return false; seen.add(key); return true; });
+    update({ customTasks: [...customTasks, ...unique] });
     setActivePhase(tasks[0]?.phase ?? activePhase);
     setImporting(false);
   };
@@ -70,7 +77,7 @@ export function TradingWorkflow({ record, ownerName, positions, attackSignals, p
   return <section className="workflow-page">
     <div className="workflow-hero">
       <div>
-        <span className="eyebrow">TRADING DAY COMMAND · V1.1</span>
+        <span className="eyebrow">TRADING DAY COMMAND · V1.2</span>
         <h2>今天，只执行有边界的决定</h2>
         <p>{record.date} · {ownerName} 的独立交易日流程。完成状态与阶段备注仅保存在当前浏览器。</p>
       </div>
@@ -85,7 +92,7 @@ export function TradingWorkflow({ record, ownerName, positions, attackSignals, p
       {phases.map((phase, index) => {
         const done = phaseDone(phase);
         const PhaseIcon = phase.icon;
-        return <button key={phase.id} className={`${activePhase === phase.id ? 'active' : ''} ${done === phase.tasks.length ? 'complete' : ''}`} onClick={() => setActivePhase(phase.id)}>
+        return <button key={phase.id} className={`${activePhase === phase.id ? 'active' : ''} ${done === phaseTasks(phase).length ? 'complete' : ''}`} onClick={() => setActivePhase(phase.id)}>
           <span className="phase-index">0{index + 1}</span><PhaseIcon size={18}/><span><b>{phase.label}</b><small>{phase.time}</small></span><em>{done}/{phaseTasks(phase).length}</em>
         </button>;
       })}
@@ -98,10 +105,10 @@ export function TradingWorkflow({ record, ownerName, positions, attackSignals, p
           <div className="workflow-head-actions"><button className="chat-import-trigger" onClick={() => setImporting(true)}><MessageSquareText size={14}/>从 ChatGPT 导入</button><span className="phase-counter">{phaseDone(active)} / {activeTasks.length}</span></div>
         </div>
         <div className="task-list">
-          {activeTasks.map(task => <button key={task.id} className={record.checks[task.id] ? 'done' : ''} onClick={() => toggle(task.id)}>
+          {activeTasks.map(task => <div className="workflow-task-row" key={task.id}><button className={record.checks[task.id] ? 'done' : ''} onClick={() => toggle(task.id)}>
             <span className="task-check">{record.checks[task.id] ? <Check size={16}/> : <Circle size={16}/>}</span>
             <span><b>{task.title}{isImportedTask(task) && task.sourceTitle && <em className="chat-task-badge">CHATGPT</em>}</b><small>{task.detail}</small>{isImportedTask(task) && task.sourceTitle && <small className="chat-task-source">来自：{task.sourceTitle}</small>}</span><ChevronRight size={15}/>
-          </button>)}
+          </button>{isImportedTask(task) && <div className="task-row-actions"><button onClick={() => { setEditing({ ...task }); setTaskError(''); }}>编辑任务</button><button onClick={() => { if (!window.confirm('删除这条任务？')) return; const checks = { ...record.checks }; delete checks[task.id]; update({ customTasks: customTasks.filter(item => item.id !== task.id), checks }); }}>删除任务</button></div>}</div>)}
         </div>
         {customTasks.some(item => item.phase === activePhase) && <button className="clear-chat-tasks" onClick={clearImported}><Trash2 size={13}/>移除本阶段导入任务</button>}
         <label className="phase-note"><span>阶段记录</span><textarea value={record.notes[activePhase] ?? ''} onChange={event => update({ notes: { ...record.notes, [activePhase]: event.target.value } })} placeholder={`${active.label}发生了什么？记录事实、偏差和下一步。`}/></label>
@@ -111,9 +118,9 @@ export function TradingWorkflow({ record, ownerName, positions, attackSignals, p
         <article className="card exposure-card">
           <div className="section-title"><ShieldAlert size={18}/>当前风险仪表</div>
           <div className="exposure-row"><span>持仓数量</span><b>{hidden ? '••' : positions}</b></div>
-          <div className="exposure-row"><span>当前仓位</span><b>{hidden ? '••••' : `${positionPct.toFixed(1)}%`}</b></div>
+          <div className="exposure-row"><span>当前仓位</span><b>{hidden ? '••••' : cashKnown ? `${positionPct.toFixed(1)}%` : '待补现金'}</b></div>
           <div className="exposure-row"><span>转强信号</span><b className={attackSignals ? 'warn' : ''}>{attackSignals}</b></div>
-          <div className="risk-line"><i style={{ width: `${Math.min(positionPct, 100)}%` }}/><span>组合上限 80%</span></div>
+          <div className="risk-line"><i style={{ width: hidden || !cashKnown ? '0%' : `${Math.min(positionPct, 100)}%` }}/><span>组合上限 {portfolioLimit}%</span></div>
         </article>
         <article className="card session-card">
           <Clock3 size={18}/><span className="eyebrow">CURRENT PROTOCOL</span><b>{active.label}阶段</b>
@@ -122,6 +129,14 @@ export function TradingWorkflow({ record, ownerName, positions, attackSignals, p
         </article>
       </aside>
     </div>
-    {importing && <ChatTaskImporter initialPhase={activePhase} onClose={() => setImporting(false)} onImport={importTasks}/>}
+    {editing && <div className="modal-backdrop"><form className="modal compact-modal" role="dialog" aria-modal="true" aria-label="编辑任务" onSubmit={event => {
+      event.preventDefault();
+      const next = { ...editing, title: editing.title.trim(), detail: editing.detail.trim() };
+      if (!next.title) return setTaskError('任务标题不能为空');
+      if (customTasks.some(item => item.id !== next.id && taskKey(item) === taskKey(next))) return setTaskError('该阶段已有相同任务');
+      update({ customTasks: customTasks.map(item => item.id === next.id ? next : item) });
+      setActivePhase(next.phase); setEditing(null);
+    }}><div className="modal-head"><h3>编辑任务</h3><button type="button" className="ghost-btn" onClick={() => setEditing(null)}>关闭</button></div><div className="chat-paste-fields"><label>任务标题<input value={editing.title} required onChange={event => setEditing({ ...editing, title: event.target.value })}/></label><label>任务详情<textarea value={editing.detail} onChange={event => setEditing({ ...editing, detail: event.target.value })}/></label><label>所属阶段<select value={editing.phase} onChange={event => setEditing({ ...editing, phase: event.target.value as WorkflowPhase })}>{phases.map(phase => <option value={phase.id} key={phase.id}>{phase.label}</option>)}</select></label><small>来源：{editing.sourceTitle}</small></div>{taskError && <p className="form-error" role="alert">{taskError}</p>}<div className="modal-actions"><button type="button" className="ghost-btn" onClick={() => setEditing(null)}>取消</button><button type="submit" className="primary-btn">保存任务</button></div></form></div>}
+    {importing && <ChatTaskImporter existingTasks={customTasks} initialPhase={activePhase} onClose={() => setImporting(false)} onImport={importTasks}/>}
   </section>;
 }

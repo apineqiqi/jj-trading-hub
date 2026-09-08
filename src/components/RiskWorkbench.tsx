@@ -75,9 +75,11 @@ export function RiskWorkbench({ users, selectedUserId, positions, watchlist, cas
   const afterPortfolioPct = assets ? (currentPortfolio + capital) / assets * 100 : 0;
   const afterSinglePct = assets ? (existingValue + capital) / assets * 100 : 0;
   const userPlans = plans.filter(item => item.userId === userId).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  const hasValidLevels = Boolean(selectedStock && assets > 0 && entry > stop && target > entry);
+  const cashKnown = cashByUser[userId] !== undefined;
+  const hasValidLevels = Boolean(selectedStock && cashKnown && assets > 0 && stop > 0 && entry > stop && target > entry && suggestedShares > 0);
   const privateMoney = (value: number) => hidden ? '••••••' : `¥${money.format(value)}`;
   const warnings = [
+    !cashKnown ? '请先在资金与备份中录入该账户现金' : '',
     assets <= 0 ? '该账户尚无可计算资产' : '',
     entry <= stop ? '入场价必须高于止损价' : '',
     target <= entry ? '目标价必须高于入场价' : '',

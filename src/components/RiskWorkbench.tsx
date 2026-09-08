@@ -1,6 +1,7 @@
 import { Calculator, Crosshair, Gauge, Save, ShieldAlert, Trash2, TrendingUp, WalletCards } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import type { Position, RiskPlan, RiskProfile, UserProfile, WatchItem } from '../types/market';
+import type { AlertDirection, Position, PriceAlert, RiskPlan, RiskProfile, UserProfile, WatchItem } from '../types/market';
+import { linkedToPlan } from '../data/planAlerts';
 
 const defaultProfile = (userId: string): RiskProfile => ({ userId, singlePositionPct: 35, portfolioPct: 80, tradeRiskPct: 1, dailyLossPct: 2 });
 const money = new Intl.NumberFormat('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -18,7 +19,7 @@ function suggestedLevels(item?: WatchItem) {
   return { entry: entry.toFixed(2), stop: stop.toFixed(2), target: target.toFixed(2) };
 }
 
-export function RiskWorkbench({ users, selectedUserId, positions, watchlist, cashByUser, profiles, plans, hidden, onProfileChange, onAddPlan, onDeletePlan }: {
+export function RiskWorkbench({ users, selectedUserId, positions, watchlist, cashByUser, profiles, plans, alerts, hidden, onProfileChange, onAddPlan, onDeletePlan, onLinkAlerts, onOpenAlerts }: {
   users: UserProfile[];
   selectedUserId: string;
   positions: Position[];
@@ -26,6 +27,9 @@ export function RiskWorkbench({ users, selectedUserId, positions, watchlist, cas
   cashByUser: Record<string, number>;
   profiles: RiskProfile[];
   plans: RiskPlan[];
+  alerts: PriceAlert[];
+  onLinkAlerts: (plan: RiskPlan, direction: AlertDirection) => void;
+  onOpenAlerts: () => void;
   hidden: boolean;
   onProfileChange: (profile: RiskProfile) => void;
   onAddPlan: (plan: RiskPlan) => void;
@@ -34,6 +38,9 @@ export function RiskWorkbench({ users, selectedUserId, positions, watchlist, cas
   const activeUsers = users.filter(user => !user.archived);
   const initialUserId = selectedUserId === 'all' ? activeUsers[0]?.id ?? '' : selectedUserId;
   const [userId, setUserId] = useState(initialUserId);
+  const [linkPlan, setLinkPlan] = useState<RiskPlan | null>(null);
+  const [entryDirection, setEntryDirection] = useState<AlertDirection>('above');
+  const [linkError, setLinkError] = useState('');
   const formWatchlist = useMemo(() => watchlist.filter(item => item.userId === userId), [watchlist, userId]);
   const [symbol, setSymbol] = useState(formWatchlist[0]?.symbol ?? '');
   const [levels, setLevels] = useState(() => suggestedLevels(formWatchlist[0]));
@@ -103,7 +110,7 @@ export function RiskWorkbench({ users, selectedUserId, positions, watchlist, cas
 
   return <section className="risk-page">
     <section className="risk-hero">
-      <div><span className="eyebrow">CAPITAL DEFENSE SYSTEM · V1.0</span><h2>先定义最多亏多少，再决定可以买多少</h2><p>建议股数同时受单笔风险、单股上限和组合仓位约束。这里输出的是风险预算，不替代对行情方向的判断。</p></div>
+      <div><span className="eyebrow">CAPITAL DEFENSE SYSTEM · V1.3</span><h2>先定义最多亏多少，再决定可以买多少</h2><p>建议股数同时受单笔风险、单股上限和组合仓位约束。这里输出的是风险预算，不替代对行情方向的判断。</p></div>
       <div className="risk-hero-state"><span>账户净资产</span><strong>{privateMoney(assets)}</strong><small>{owner?.name ?? '未选择账户'} · 当前仓位 {hidden ? '••••' : `${currentPortfolioPct.toFixed(1)}%`}</small></div>
     </section>
 
@@ -151,13 +158,33 @@ export function RiskWorkbench({ users, selectedUserId, positions, watchlist, cas
 
     <section className="risk-plans card">
       <div className="section-heading"><div><div className="section-title"><WalletCards size={18}/>已保存计划</div><span className="section-meta">{owner?.name ?? '当前账户'} · 仅保存计算参数，不自动下单</span></div><span className="plan-count">{userPlans.length} PLANS</span></div>
+      <p className="plan-link-note">将价格边界连接到提醒中心。三条规则独立判断，不代表成交或持仓状态；仅在页面打开时核对公开延迟行情。</p>
       {userPlans.length ? <div className="plan-list">{userPlans.map(plan => <article key={plan.id}>
         <div className="plan-symbol"><TrendingUp size={17}/><span><b>{hidden ? '计划标的' : plan.name}</b><small>{hidden ? '••••••' : plan.symbol}</small></span></div>
         <div><span>入场 / 止损 / 目标</span><b>{hidden ? '••••••' : `${plan.entry.toFixed(2)} / ${plan.stop.toFixed(2)} / ${plan.target.toFixed(2)}`}</b></div>
         <div><span>数量 / 占用</span><b>{hidden ? '••••••' : `${plan.shares} 股 / ¥${money.format(plan.capital)}`}</b></div>
         <div><span>最大亏损 / 盈亏比</span><b>{hidden ? '••••••' : `¥${money.format(plan.riskAmount)} / ${plan.rewardRiskRatio.toFixed(2)}:1`}</b></div>
+        <div className="plan-link-actions"><span>{alerts.filter(alert => linkedToPlan(alert, plan)).length}/3 条关联 · {alerts.filter(alert => linkedToPlan(alert, plan) && alert.enabled).length} 条启用</span><button className="ghost-btn" onClick={() => { setLinkPlan(plan); setEntryDirection('above'); setLinkError(''); }}>设置计划提醒</button><button className="ghost-btn" onClick={onOpenAlerts}>查看提醒中心</button></div>
         <button className="tiny-btn danger" title={`删除 ${plan.name} 计划`} onClick={() => onDeletePlan(plan)}><Trash2 size={14}/></button>
       </article>)}</div> : <div className="plan-empty"><Crosshair size={27}/><b>还没有保存交易计划</b><span>把价格边界填写完整后，保存第一份可复核的风险预算。</span></div>}
     </section>
+    {linkPlan && <div className="modal-backdrop"><form className="modal compact-modal plan-alert-preview" role="dialog" aria-modal="true" aria-label="设置计划提醒" onSubmit={event => {
+      event.preventDefault();
+      try { onLinkAlerts(linkPlan, entryDirection); setLinkPlan(null); } catch (error) { setLinkError(error instanceof Error ? error.message : '生成提醒失败'); }
+    }}>
+      <div className="modal-head"><h3>连接计划与价格提醒</h3><button type="button" className="ghost-btn" onClick={() => setLinkPlan(null)}>关闭</button></div>
+      <p>{hidden ? '计划标的' : linkPlan.name} · {owner?.name} · {new Date(linkPlan.createdAt).toLocaleDateString('zh-CN')} 保存的计划</p>
+      <label>入场提醒方向<select value={entryDirection} onChange={event => setEntryDirection(event.target.value as AlertDirection)}><option value="above">达到或高于入场价（突破观察）</option><option value="below">达到或低于入场价（回踩观察）</option></select></label>
+      <div className="plan-level-preview">{(['entry', 'stop', 'target'] as const).map(level => {
+        const existing = alerts.find(alert => linkedToPlan(alert, linkPlan) && alert.planLevel === level);
+        const targetPrice = existing?.target ?? linkPlan[level];
+        const direction = existing?.direction ?? (level === 'entry' ? entryDirection : level === 'stop' ? 'below' : 'above');
+        return <div key={level}><span>{level === 'entry' ? '入场' : level === 'stop' ? '止损' : '目标'} · {direction === 'above' ? '≥' : '≤'} {hidden ? '••••' : targetPrice.toFixed(2)}</span><small>{existing ? `已关联 · ${existing.enabled ? '启用' : '暂停'} · 保持原设置` : '待生成'}</small></div>;
+      })}</div>
+      <p>仅补齐缺失规则，不重复创建，不恢复已暂停规则，也不修改原入场方向。更换方向请先在提醒中心删除该入场规则，再重新生成。</p>
+      <p>当前价格已满足条件时会立即提示；删除计划将一并移除其关联提醒。执行前请重新核对价格、持仓和风险预算。</p>
+      {linkError && <p className="form-error" role="alert">{linkError}</p>}
+      <div className="modal-actions"><button type="button" className="ghost-btn" onClick={() => setLinkPlan(null)}>取消</button><button type="submit" className="primary-btn">确认生成缺失提醒</button></div>
+    </form></div>}
   </section>;
 }

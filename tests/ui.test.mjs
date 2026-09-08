@@ -26,7 +26,7 @@ try {
   await mkdir('test-results', { recursive: true });
   await page.goto('http://127.0.0.1:5174/jj-trading-hub/');
   await page.waitForLoadState('networkidle');
-  assert.match(await page.locator('body').innerText(), /V1.2/);
+  assert.match(await page.locator('body').innerText(), /V1.3/);
   await openData();
   await page.getByLabel('Alice可用现金').fill('2000');
   await page.getByRole('button', { name: '保存账户现金' }).click();

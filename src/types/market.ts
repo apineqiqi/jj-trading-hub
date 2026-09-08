@@ -56,6 +56,7 @@ export interface AccountSnapshot {
 }
 
 export interface PortfolioSnapshot {
+  userId?: string;
   id: string;
   date: string;
   totalAssets: number;
@@ -68,6 +69,7 @@ export interface PortfolioSnapshot {
 export type TradeSide = '买入' | '卖出';
 
 export interface TradeRecord {
+  userId?: string;
   id: string;
   date: string;
   side: TradeSide;

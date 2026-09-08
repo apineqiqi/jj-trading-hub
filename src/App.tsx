@@ -1,6 +1,7 @@
 import { Activity, BellRing, BriefcaseBusiness, ChartNoAxesCombined, Eye, EyeOff, Gauge, LayoutDashboard, ListChecks, ListFilter, ShieldAlert, ShieldCheck, UsersRound } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCenter } from './components/AlertCenter';
+import { DataManager } from './components/DataManager';
 import { DecisionTable } from './components/DecisionTable';
 import { EditorModal } from './components/EditorModal';
 import { MarketPulse, type QuoteStatus } from './components/MarketPulse';
@@ -16,7 +17,7 @@ import { WatchTable } from './components/WatchTable';
 import { accountSnapshot, decisions, initialPositions, initialSnapshots, watchlist as initialWatchlist } from './data/mock';
 import { seedAlertRules } from './data/alerts';
 import { defaultUser, migratePositions, migrateUsers, migrateWatchlist } from './data/migration';
-import { usePersistentState } from './hooks/usePersistentState';
+import { usePersistentState, useSaveStatus } from './hooks/usePersistentState';
 import { fetchMarketQuotes } from './services/quotes';
 import type { DailyWorkflow, PortfolioSnapshot, Position, PriceAlert, RiskPlan, RiskProfile, TradeRecord, UserProfile, VisualReviewRecord, WatchItem } from './types/market';
 
@@ -25,6 +26,9 @@ type EditorTarget = { kind: 'position'; value?: Position } | { kind: 'watch'; va
 
 export default function App() {
   const [view, setView] = useState<View>('overview');
+  const saveStatus = useSaveStatus();
+  const [dataOpen, setDataOpen] = useState(false);
+  const [cashByUser, setCashByUser] = usePersistentState<Record<string, number>>('jj-trading-v12-cash', { [defaultUser.id]: accountSnapshot.availableCash });
   const [users, setUsers] = usePersistentState<UserProfile[]>('jj-trading-v06-users', migrateUsers());
   const [activeUserId, setActiveUserId] = usePersistentState<string>('jj-trading-v06-active-user', 'all');
   const [positions, setPositions] = usePersistentState<Position[]>('jj-trading-v06-positions', migratePositions());
@@ -49,7 +53,7 @@ export default function App() {
   const scopedWatchlist = selectedUserId === 'all' ? watchlist : watchlist.filter(item => item.userId === selectedUserId);
   const activeProfile = users.find(user => user.id === selectedUserId);
   const editorUserId = selectedUserId === 'all' ? activeUsers[0]?.id ?? defaultUser.id : selectedUserId;
-  const workflowUserId = selectedUserId === 'all' ? defaultUser.id : selectedUserId;
+  const workflowUserId = selectedUserId === 'all' ? activeUsers[0]?.id ?? defaultUser.id : selectedUserId;
   const workflowOwner = users.find(user => user.id === workflowUserId)?.name ?? 'JJ';
   const workflowPositions = positions.filter(item => item.userId === workflowUserId);
   const workflowWatchlist = watchlist.filter(item => item.userId === workflowUserId);
@@ -103,7 +107,10 @@ export default function App() {
 
   const portfolio = useMemo(() => scopedPositions.reduce((total, item) => total + (item.reportedMarketValue ?? item.price * item.shares), 0), [scopedPositions]);
   const pnl = useMemo(() => scopedPositions.reduce((total, item) => total + (item.reportedPnl ?? (item.price - item.cost) * item.shares), 0), [scopedPositions]);
-  const scopedCash = selectedUserId === 'all' || selectedUserId === defaultUser.id ? accountSnapshot.availableCash : 0;
+  const scopedCash = selectedUserId === 'all' ? Object.values(cashByUser).reduce((sum, cash) => sum + cash, 0) : cashByUser[selectedUserId] ?? 0;
+  const cashKnown = selectedUserId === 'all' ? users.every(user => cashByUser[user.id] !== undefined) : cashByUser[selectedUserId] !== undefined;
+  const scopedSnapshots = snapshots.filter(item => item.userId !== undefined && (selectedUserId === 'all' || item.userId === selectedUserId));
+  const scopedTrades = trades.filter(item => item.userId !== undefined && (selectedUserId === 'all' || item.userId === selectedUserId));
   const totalAssets = portfolio + scopedCash;
   const positionPct = totalAssets ? portfolio / totalAssets * 100 : 0;
   const attackSignals = scopedWatchlist.filter(item => item.state === '转强').length;
@@ -115,10 +122,19 @@ export default function App() {
     return price !== undefined && rule.enabled && !rule.acknowledged && (rule.direction === 'above' ? price >= rule.target : price <= rule.target);
   }).length;
   const workflowPortfolio = workflowPositions.reduce((total, item) => total + (item.reportedMarketValue ?? item.price * item.shares), 0);
-  const workflowCash = workflowUserId === defaultUser.id ? accountSnapshot.availableCash : 0;
+  const workflowCash = cashByUser[workflowUserId] ?? 0;
   const workflowPositionPct = workflowPortfolio + workflowCash ? workflowPortfolio / (workflowPortfolio + workflowCash) * 100 : 0;
   const money = (value: number) => `¥${value.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const privateValue = (value: string) => privacyMode ? '••••••' : value;
+  const backupData = {
+    'jj-trading-v06-users': users, 'jj-trading-v06-active-user': activeUserId,
+    'jj-trading-v06-positions': positions, 'jj-trading-v06-watchlist': watchlist,
+    'jj-trading-v04-snapshots': snapshots, 'jj-trading-v04-trades': trades,
+    'jj-trading-privacy-mode': privacyMode, 'jj-trading-v07-workflows': workflows,
+    'jj-trading-v08-alerts': alerts, 'jj-trading-v09-visual-reviews': visualReviews,
+    'jj-trading-v10-risk-profiles': riskProfiles, 'jj-trading-v10-risk-plans': riskPlans,
+    'jj-trading-v12-cash': cashByUser,
+  };
   const workflowTaskTotal = 12 + (workflow.customTasks?.length ?? 0);
   const workflowTaskIds = new Set(workflow.customTasks?.map(item => item.id) ?? []);
   const workflowCompleted = Object.entries(workflow.checks).filter(([id, done]) => done && (!id.startsWith('chat-') || workflowTaskIds.has(id))).length;
@@ -161,7 +177,7 @@ export default function App() {
 
   return <div className="app-shell">
     <header>
-      <div><div className="brand-line"><span className="eyebrow">JJ PERSONAL TRADING OS</span><span className="version-badge">V1.1</span></div><h1>JJ 交易中枢</h1></div>
+      <div><div className="brand-line"><span className="eyebrow">JJ PERSONAL TRADING OS</span><span className="version-badge">V1.2</span></div><h1>JJ 交易中枢</h1></div>
       <div className="header-actions"><UserSwitcher users={users} value={selectedUserId} onChange={setActiveUserId} onManage={() => setManagingUsers(true)}/><button className={`privacy-toggle ${privacyMode ? 'active' : ''}`} aria-pressed={privacyMode} onClick={() => setPrivacyMode(value => !value)}>{privacyMode ? <Eye size={17}/> : <EyeOff size={17}/>}<span>{privacyMode ? '显示持仓' : '隐藏持仓'}</span></button><button className={`icon-btn alert-trigger ${triggeredAlerts ? 'hot' : ''}`} title="条件提醒" onClick={() => setAlertsOpen(true)}><BellRing size={20}/>{triggeredAlerts > 0 && <span>{triggeredAlerts}</span>}</button></div>
     </header>
 
@@ -171,8 +187,9 @@ export default function App() {
       <button className={view === 'portfolio' ? 'active' : ''} onClick={() => setView('portfolio')}><BriefcaseBusiness size={16}/>持仓 <span>{scopedPositions.length}</span></button>
       <button className={view === 'watchlist' ? 'active' : ''} onClick={() => setView('watchlist')}><ListFilter size={16}/>观察池 <span>{scopedWatchlist.length}</span></button>
       <button className={view === 'risk' ? 'active' : ''} onClick={() => setView('risk')}><ShieldAlert size={16}/>风控 <span>{visibleRiskPlans.length}</span></button>
-      <button className={view === 'review' ? 'active' : ''} onClick={() => setView('review')}><ChartNoAxesCombined size={16}/>复盘 <span>{snapshots.length + visualReviews.length}</span></button>
-      <div className="save-state"><i></i>本机已保存</div>
+      <button className={view === 'review' ? 'active' : ''} onClick={() => setView('review')}><ChartNoAxesCombined size={16}/>复盘 <span>{scopedSnapshots.length + visualReviews.filter(item => selectedUserId === 'all' || item.userId === selectedUserId).length}</span></button>
+      <button onClick={() => setDataOpen(true)}>资金与备份</button>
+      <div className={`save-state ${saveStatus.startsWith('保存失败') ? 'save-error' : ''}`} role="status"><i></i>{saveStatus}</div>
     </nav>
 
     <MarketPulse {...quoteState} onRefresh={() => void refreshQuotes()}/>
@@ -184,19 +201,19 @@ export default function App() {
           <span className="workflow-launch-icon"><ListChecks size={19}/></span><span><small>今日交易流程 · {workflowOwner}</small><b>{workflowCompleted === workflowTaskTotal ? '今日流程已完成' : `还有 ${workflowTaskTotal - workflowCompleted} 项待确认`}</b></span><span className="workflow-launch-progress"><i style={{ width: `${workflowCompleted / workflowTaskTotal * 100}%` }}/></span><em>{workflowCompleted}/{workflowTaskTotal}</em><span className="workflow-launch-cta">继续 <span>→</span></span>
         </button>
         <section className="hero card">
-          <div><span className="eyebrow">{accountSnapshot.asOf}</span><h2>设备 / 测试 / 激光强于光模块核心</h2><p>已同步 JJ 最新账户快照。今日不是 CPO 整体 β 行情，联讯与炬光相对占优；寒武纪仍处等待确认阶段。</p></div>
-          <div className="hero-score"><span>今日环境</span><strong>分化</strong></div>
+          <div><span className="eyebrow">历史参考 · {accountSnapshot.asOf}</span><h2>设备 / 测试 / 激光强于光模块核心</h2><p>此判断来自历史样例，不随行情刷新更新。请在当日交易流程中记录新的判断和执行条件。</p></div>
+          <div className="hero-score"><span>历史环境</span><strong>分化</strong></div>
         </section>
         <section className="stats">
-          <StatCard title="总资产" value={privateValue(money(totalAssets))} sub={quoteState.status === 'success' ? '延迟行情估算' : accountSnapshot.asOf} icon={<BriefcaseBusiness size={18}/>}/>
+          <StatCard title="总资产" value={cashKnown ? privateValue(money(totalAssets)) : '待补现金'} sub={cashKnown ? '持仓估值 + 已录现金' : '请在资金与备份中补齐现金'} icon={<BriefcaseBusiness size={18}/>}/>
           <StatCard title="持仓市值" value={privateValue(money(portfolio))} sub={`${scopedPositions.length} 个持仓`} icon={<BriefcaseBusiness size={18}/>}/>
-          <StatCard title="可用现金" value={selectedUserId === 'all' || selectedUserId === defaultUser.id ? privateValue(money(scopedCash)) : '—'} sub={selectedUserId === 'all' || selectedUserId === defaultUser.id ? 'JJ 账户可用余额' : '该用户尚未录入现金'} icon={<Activity size={18}/>}/>
+          <StatCard title="可用现金" value={cashKnown ? privateValue(money(scopedCash)) : '待补现金'} sub="资金与备份中维护余额" icon={<Activity size={18}/>}/>
           <StatCard title="浮动盈亏" value={privateValue(`${pnl >= 0 ? '+' : '-'}${money(Math.abs(pnl))}`)} sub={quoteState.status === 'success' ? '行情估算口径' : '券商账户口径'} icon={<Activity size={18}/>}/>
-          <StatCard title="当前仓位" value={privateValue(`${positionPct.toFixed(1)}%`)} sub="持仓市值 / 总资产" icon={<Gauge size={18}/>}/>
+          <StatCard title="当前仓位" value={cashKnown ? privateValue(`${positionPct.toFixed(1)}%`) : '—'} sub="持仓市值 / 总资产" icon={<Gauge size={18}/>}/>
           <StatCard title="进攻信号" value={String(attackSignals)} sub={attackSignals ? '观察池出现转强' : '暂无转强标的'} icon={<Gauge size={18}/>}/>
         </section>
         <PortfolioTable items={scopedPositions} users={users} showOwners={selectedUserId === 'all'} hidden={privacyMode} onAdd={() => setEditor({ kind: 'position' })} onEdit={value => setEditor({ kind: 'position', value })} onDelete={removePosition}/>
-        <DecisionTable rows={decisions}/>
+        <p className="section-meta">以下为 {accountSnapshot.asOf} 的历史决策参考，不代表今日计划。</p><DecisionTable rows={decisions}/>
       </>}
 
       {view === 'portfolio' && <>
@@ -209,14 +226,14 @@ export default function App() {
         <WatchTable items={scopedWatchlist} users={users} showOwners={selectedUserId === 'all'} onAdd={() => setEditor({ kind: 'watch' })} onEdit={value => setEditor({ kind: 'watch', value })} onDelete={removeWatch}/>
       </>}
 
-      {view === 'workflow' && <TradingWorkflow record={workflow} ownerName={workflowOwner} positions={workflowPositions.length} attackSignals={workflowWatchlist.filter(item => item.state === '转强').length} positionPct={workflowPositionPct} hidden={privacyMode} onChange={saveWorkflow}/>}
+      {view === 'workflow' && <TradingWorkflow record={workflow} ownerName={workflowOwner} positions={workflowPositions.length} attackSignals={workflowWatchlist.filter(item => item.state === '转强').length} positionPct={workflowPositionPct} cashKnown={cashByUser[workflowUserId] !== undefined} portfolioLimit={disciplineProfile.portfolioPct} hidden={privacyMode} onChange={saveWorkflow}/>}
 
       {view === 'risk' && <RiskWorkbench
         users={users}
         selectedUserId={selectedUserId}
         positions={positions}
         watchlist={watchlist}
-        cashByUser={{ [defaultUser.id]: accountSnapshot.availableCash }}
+        cashByUser={cashByUser}
         profiles={riskProfiles}
         plans={riskPlans}
         hidden={privacyMode}
@@ -226,9 +243,16 @@ export default function App() {
       />}
 
       {view === 'review' && <ReviewWorkspace
+        cashKnown={cashKnown}
+        key={selectedUserId}
+        users={users}
+        selectedUserId={selectedUserId}
+        legacySnapshots={snapshots.filter(item => !item.userId)}
+        legacyTrades={trades.filter(item => !item.userId)}
+        onAssignLegacy={(kind, id, userId) => kind === 'snapshot' ? setSnapshots(current => current.map(item => item.id === id ? { ...item, userId } : item)) : setTrades(current => current.map(item => item.id === id ? { ...item, userId } : item))}
         hidden={privacyMode}
-        snapshots={snapshots}
-        trades={trades}
+        snapshots={scopedSnapshots}
+        trades={scopedTrades}
         currentSnapshot={{ totalAssets, marketValue: portfolio, cash: scopedCash, unrealizedPnl: pnl }}
         evidencePanel={<VisualReviewBoard
           records={visualReviews}
@@ -253,6 +277,7 @@ export default function App() {
     </main>
 
     {editor && <EditorModal target={editor} users={activeUsers} defaultUserId={editorUserId} onClose={() => setEditor(null)} onSave={saveEditor}/>}
+    {dataOpen && <DataManager users={users} cash={cashByUser} onCash={setCashByUser} data={backupData} onClose={() => setDataOpen(false)}/>}
     {managingUsers && <UserManagerModal users={users} onClose={() => setManagingUsers(false)} onAdd={addUser} onUpdate={updateUser} onToggleArchive={toggleArchive}/>}
     {alertsOpen && <AlertCenter alerts={alerts} watchlist={watchlist} users={users} selectedUserId={selectedUserId} hidden={privacyMode} onClose={() => setAlertsOpen(false)} onChange={setAlerts}/>}
   </div>;

@@ -1,10 +1,11 @@
 {
   "name": "jj-trading-hub",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "test": "tsc -p tests/tsconfig.json && node --test tests/data.test.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview"
   },

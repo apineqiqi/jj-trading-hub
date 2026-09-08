@@ -1,6 +1,6 @@
 import { ArrowDownLeft, ArrowUpRight, BookOpen, Camera, Plus, Trash2, TrendingUp, X } from 'lucide-react';
 import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
-import type { PortfolioSnapshot, TradeRecord, TradeSide } from '../types/market';
+import type { PortfolioSnapshot, TradeRecord, TradeSide, UserProfile } from '../types/market';
 
 const money = new Intl.NumberFormat('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const compactMoney = new Intl.NumberFormat('zh-CN', { notation: 'compact', maximumFractionDigits: 1 });
@@ -37,7 +37,13 @@ function EquityCurve({ snapshots }: { snapshots: PortfolioSnapshot[] }) {
   </div>;
 }
 
-export function ReviewWorkspace({ snapshots, trades, currentSnapshot, hidden = false, evidencePanel, onAddSnapshot, onDeleteSnapshot, onAddTrade, onDeleteTrade }: {
+export function ReviewWorkspace({ cashKnown, users, selectedUserId, legacySnapshots, legacyTrades, onAssignLegacy, snapshots, trades, currentSnapshot, hidden = false, evidencePanel, onAddSnapshot, onDeleteSnapshot, onAddTrade, onDeleteTrade }: {
+  cashKnown: boolean;
+  users: UserProfile[];
+  selectedUserId: string;
+  legacySnapshots: PortfolioSnapshot[];
+  legacyTrades: TradeRecord[];
+  onAssignLegacy: (kind: 'snapshot' | 'trade', id: string, userId: string) => void;
   snapshots: PortfolioSnapshot[];
   trades: TradeRecord[];
   currentSnapshot: Omit<PortfolioSnapshot, 'id' | 'date' | 'note'>;
@@ -63,6 +69,7 @@ export function ReviewWorkspace({ snapshots, trades, currentSnapshot, hidden = f
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     onAddSnapshot({
+      userId: selectedUserId,
       id: crypto.randomUUID(), date: String(data.get('date')),
       totalAssets: Number(data.get('totalAssets')), marketValue: Number(data.get('marketValue')),
       cash: Number(data.get('cash')), unrealizedPnl: Number(data.get('unrealizedPnl')),
@@ -75,6 +82,7 @@ export function ReviewWorkspace({ snapshots, trades, currentSnapshot, hidden = f
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     onAddTrade({
+      userId: String(data.get('userId')),
       id: crypto.randomUUID(), date: String(data.get('date')), side: String(data.get('side')) as TradeSide,
       symbol: String(data.get('symbol')).trim(), name: String(data.get('name')).trim(),
       shares: Number(data.get('shares')), price: Number(data.get('price')), fee: Number(data.get('fee') || 0),
@@ -86,12 +94,14 @@ export function ReviewWorkspace({ snapshots, trades, currentSnapshot, hidden = f
   return <>
     <section className="review-hero">
       <div><span className="eyebrow">DECISION EVIDENCE · V0.9</span><h2>让每次决策留下证据</h2><p>账户快照回答“结果如何”，交易日志回答“为什么执行”，盘面截图则保留当时真正看见的事实。所有记录仍只保存在当前浏览器。</p></div>
-      <div className="review-actions"><button className="ghost-btn" onClick={() => setTradeForm(true)}><BookOpen size={15}/>记一笔交易</button><button className="primary-btn" onClick={() => setSnapshotForm(true)}><Camera size={15}/>记录账户快照</button></div>
+      <div className="review-actions"><button className="ghost-btn" onClick={() => setTradeForm(true)}><BookOpen size={15}/>记一笔交易</button><button className="primary-btn" disabled={selectedUserId === 'all'} onClick={() => setSnapshotForm(true)}><Camera size={15}/>记录账户快照</button></div>
     </section>
 
     {evidencePanel}
 
-    <section className="review-summary">
+    {selectedUserId === 'all' && <p className="section-meta">全账户展示各账户记录；请切换到单一账户查看资产曲线或新增账户快照，避免混合不同账户的资产。</p>}
+    {(legacySnapshots.length > 0 || legacyTrades.length > 0) && <section className="card legacy-records"><h3>旧版记录待确认归属</h3><p>这些记录尚未计入任何用户的复盘。请逐条选择所属账户。</p>{[...legacySnapshots.map(item => ({ id: item.id, kind: 'snapshot' as const, title: `${item.date} 账户快照` })), ...legacyTrades.map(item => ({ id: item.id, kind: 'trade' as const, title: `${item.date} ${hidden ? '交易记录' : item.name} ${item.side}` }))].map(item => <label key={`${item.kind}-${item.id}`}><span>{item.title}</span><select aria-label={`${item.title}归属账户`} value="" onChange={event => event.target.value && onAssignLegacy(item.kind, item.id, event.target.value)}><option value="">选择归属账户</option>{users.map(user => <option value={user.id} key={user.id}>{user.name}</option>)}</select></label>)}</section>}
+    {selectedUserId !== 'all' && <section className="review-summary">
       <div className="curve-card card">
         <div className="section-heading"><div><div className="section-title"><TrendingUp size={18}/>资产轨迹</div><span className="section-meta">按账户总资产绘制 · {snapshots.length} 个数据点</span></div><span className={assetChange >= 0 ? 'performance up' : 'performance down'}>{assetChange >= 0 ? '+' : ''}{returnPct.toFixed(2)}%</span></div>
         <div className={hidden ? 'privacy-chart' : ''}><EquityCurve snapshots={snapshots}/></div>
@@ -101,14 +111,14 @@ export function ReviewWorkspace({ snapshots, trades, currentSnapshot, hidden = f
         <div className="metric-block"><span>累计变化</span><strong className={hidden ? 'privacy-value' : assetChange >= 0 ? 'up' : 'down'}>{hidden ? '••••••' : `${assetChange >= 0 ? '+' : ''}¥${money.format(assetChange)}`}</strong><small>首个快照至今</small></div>
         <div className="metric-block"><span>已记录交易</span><strong>{trades.length}</strong><small>{trades.length ? '买卖动作可回溯' : '等待第一笔记录'}</small></div>
       </div>
-    </section>
+    </section>}
 
     <section className="review-ledgers">
       <div className="card ledger-card">
-        <div className="section-heading"><div><div className="section-title">账户快照</div><span className="section-meta">每次同步持仓时留一张底片</span></div><button className="tiny-add" onClick={() => setSnapshotForm(true)}><Plus size={14}/>新增</button></div>
+        <div className="section-heading"><div><div className="section-title">账户快照</div><span className="section-meta">每次同步持仓时留一张底片</span></div><button className="tiny-add" disabled={selectedUserId === 'all'} onClick={() => setSnapshotForm(true)}><Plus size={14}/>新增</button></div>
         <div className="snapshot-list">
           {sortedSnapshots.map(item => <article className="snapshot-row" key={item.id}>
-            <time>{item.date}<i></i></time>
+            <time>{item.date}<small>{users.find(user => user.id === item.userId)?.name}</small><i></i></time>
             <div><b>{privateMoney(item.totalAssets)}</b><span>{hidden ? '市值 •••••• · 现金 ••••••' : `市值 ¥${money.format(item.marketValue)} · 现金 ¥${money.format(item.cash)}`}</span>{item.note && <small>{item.note}</small>}</div>
             <div className={hidden ? 'privacy-value snapshot-pnl' : item.unrealizedPnl >= 0 ? 'up snapshot-pnl' : 'down snapshot-pnl'}>{hidden ? '••••••' : `${item.unrealizedPnl >= 0 ? '+' : ''}¥${money.format(item.unrealizedPnl)}`}</div>
             <button className="tiny-btn danger" title={`删除 ${item.date} 快照`} onClick={() => onDeleteSnapshot(item)}><Trash2 size={14}/></button>
@@ -120,7 +130,7 @@ export function ReviewWorkspace({ snapshots, trades, currentSnapshot, hidden = f
         <div className="section-heading"><div><div className="section-title">交易日志</div><span className="section-meta">记录动作，也记录当时的理由</span></div><button className="tiny-add" onClick={() => setTradeForm(true)}><Plus size={14}/>新增</button></div>
         {sortedTrades.length ? <div className="trade-list">{sortedTrades.map(item => <article className="trade-row" key={item.id}>
           <div className={`side-icon ${item.side === '买入' ? 'buy' : 'sell'}`}>{item.side === '买入' ? <ArrowDownLeft size={16}/> : <ArrowUpRight size={16}/>}</div>
-          <div><b>{hidden ? '交易标的' : item.name}<em>{item.side}</em></b><span>{hidden ? `${item.date} · •••••• · •••• 股 × ••••••` : `${item.date} · ${item.symbol} · ${item.shares} 股 × ¥${money.format(item.price)}`}</span>{item.note && <small>{item.note}</small>}</div>
+          <div><b>{hidden ? '交易标的' : item.name}<em>{item.side}</em></b><small>{users.find(user => user.id === item.userId)?.name}</small><span>{hidden ? `${item.date} · •••••• · •••• 股 × ••••••` : `${item.date} · ${item.symbol} · ${item.shares} 股 × ¥${money.format(item.price)}`}</span>{item.note && <small>{item.note}</small>}</div>
           <strong>{hidden ? '••••••' : `¥${money.format(item.shares * item.price + (item.side === '买入' ? item.fee : -item.fee))}`}</strong>
           <button className="tiny-btn danger" title={`删除 ${item.name} 交易`} onClick={() => onDeleteTrade(item)}><Trash2 size={14}/></button>
         </article>)}</div> : <div className="ledger-empty"><BookOpen size={26}/><b>还没有交易记录</b><span>从下一笔买卖开始，把动作和理由一起留下。</span><button className="ghost-btn" onClick={() => setTradeForm(true)}>记录第一笔</button></div>}
@@ -132,9 +142,9 @@ export function ReviewWorkspace({ snapshots, trades, currentSnapshot, hidden = f
         <div className="modal-head"><div><span className="eyebrow">ACCOUNT CHECKPOINT</span><h3>记录账户快照</h3></div><button type="button" className="icon-btn" onClick={() => setSnapshotForm(false)}><X size={19}/></button></div>
         <div className="form-grid">
           <label><span>日期</span><input name="date" type="date" defaultValue={today} required/></label>
-          <label><span>总资产</span><input name="totalAssets" type="number" step="0.01" defaultValue={currentSnapshot.totalAssets} required/></label>
+          <label><span>总资产</span><input name="totalAssets" type="number" step="0.01" defaultValue={cashKnown ? currentSnapshot.totalAssets : undefined} required/></label>
           <label><span>持仓市值</span><input name="marketValue" type="number" step="0.01" defaultValue={currentSnapshot.marketValue} required/></label>
-          <label><span>可用现金</span><input name="cash" type="number" step="0.01" defaultValue={currentSnapshot.cash} required/></label>
+          <label><span>可用现金</span><input name="cash" type="number" step="0.01" defaultValue={cashKnown ? currentSnapshot.cash : undefined} required/></label>
           <label><span>浮动盈亏</span><input name="unrealizedPnl" type="number" step="0.01" defaultValue={currentSnapshot.unrealizedPnl} required/></label>
           <label className="full-field"><span>备注</span><textarea name="note" placeholder="例如：收盘持仓截图同步"/></label>
         </div>
@@ -147,6 +157,7 @@ export function ReviewWorkspace({ snapshots, trades, currentSnapshot, hidden = f
         <div className="modal-head"><div><span className="eyebrow">EXECUTION JOURNAL</span><h3>记录交易</h3></div><button type="button" className="icon-btn" onClick={() => setTradeForm(false)}><X size={19}/></button></div>
         <div className="form-grid">
           <label><span>日期</span><input name="date" type="date" defaultValue={today} required/></label>
+          <label><span>账户</span><select name="userId" defaultValue={selectedUserId === 'all' ? '' : selectedUserId} required><option value="" disabled>选择账户</option>{users.filter(user => !user.archived && (selectedUserId === 'all' || user.id === selectedUserId)).map(user => <option value={user.id} key={user.id}>{user.name}</option>)}</select></label>
           <label><span>方向</span><select name="side" defaultValue="买入"><option>买入</option><option>卖出</option></select></label>
           <label><span>股票代码</span><input name="symbol" placeholder="688167" required/></label>
           <label><span>股票名称</span><input name="name" placeholder="炬光科技" required/></label>

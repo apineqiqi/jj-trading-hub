@@ -187,7 +187,7 @@ export default function App() {
 
   return <div className="app-shell">
     <header>
-      <div><div className="brand-line"><span className="eyebrow">JJ PERSONAL TRADING OS</span><span className="version-badge">V1.4</span></div><h1>JJ 交易中枢</h1></div>
+      <div><div className="brand-line"><span className="eyebrow">JJ PERSONAL TRADING OS</span><span className="version-badge">V1.5</span></div><h1>JJ 交易中枢</h1></div>
       <div className="header-actions"><UserSwitcher users={users} value={selectedUserId} onChange={setActiveUserId} onManage={() => setManagingUsers(true)}/><button className={`privacy-toggle ${privacyMode ? 'active' : ''}`} aria-pressed={privacyMode} onClick={() => setPrivacyMode(value => !value)}>{privacyMode ? <Eye size={17}/> : <EyeOff size={17}/>}<span>{privacyMode ? '显示持仓' : '隐藏持仓'}</span></button><button className={`icon-btn alert-trigger ${triggeredAlerts ? 'hot' : ''}`} title="条件提醒" onClick={() => setAlertsOpen(true)}><BellRing size={20}/>{triggeredAlerts > 0 && <span>{triggeredAlerts}</span>}</button></div>
     </header>
 

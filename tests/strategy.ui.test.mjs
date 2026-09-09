@@ -32,14 +32,20 @@ try {
     { phase: 'close', title: '记录待补标的', detail: '观察池外的标的先保留为任务。', alert: { symbol: '600002', name: '未知标的', direction: 'below', target: 9 } },
   ] };
   const raw = JSON.stringify(pack);
+  const smart = raw.replace(/"([^"\\]*(?:\\.[^"\\]*)*)"/g, '“$1”').replace(/:/g, '：').replace(/,/g, '，');
   await open();
   console.log('Importer DOM:', (await page.getByRole('dialog').innerText()).slice(0, 1000));
-  await page.getByLabel('策略 JSON', { exact: true }).fill(raw);
+  await page.getByLabel('策略 JSON', { exact: true }).fill(smart);
+  assert.match(await page.getByRole('status').filter({ hasText: '安全修复' }).innerText(), /中文结构引号.*全角结构标点/);
+  assert.match(await page.locator('.chat-preview-head').innerText(), /测试策略包/);
+  await page.screenshot({ path: 'test-results/v15-repair-desktop.png', fullPage: true });
+  await page.getByRole('button', { name: '替换为标准 JSON', exact: true }).click();
+  assert.match(await page.getByLabel('策略 JSON', { exact: true }).inputValue(), /^\{"format":"jj-strategy-v1"/);
   assert.match(await page.getByRole('alert').innerText(), /具体账户/);
   await page.getByLabel('导入账户', { exact: true }).selectOption('user-jj');
   assert.equal(await page.getByLabel('启用价格提醒 2', { exact: true }).isChecked(), false);
   assert.equal(await page.getByLabel('启用价格提醒 3', { exact: true }).isDisabled(), true);
-  await page.screenshot({ path: 'test-results/v14-desktop.png', fullPage: true });
+  await page.screenshot({ path: 'test-results/v15-desktop.png', fullPage: true });
   await check(); await submit();
   assert.equal((await state()).workflows[0].customTasks.length, 3); assert.equal((await state()).alerts.length, 0);
   await open(); await page.getByLabel('策略 JSON', { exact: true }).fill(raw);
@@ -64,7 +70,7 @@ try {
   await page.getByLabel('策略 JSON', { exact: true }).fill(JSON.stringify({ ...pack, date: '2000-01-01' }));
   assert.match(await page.getByRole('alert').innerText(), /只允许导入今天/);
   await page.getByLabel('策略 JSON', { exact: true }).fill('{bad json');
-  assert.match(await page.getByRole('alert').innerText(), /有效的策略 JSON/);
+  assert.match(await page.getByRole('alert').innerText(), /JSON 语法错误.*第 1 行/);
   await page.getByLabel('策略 JSON', { exact: true }).fill(raw);
   await page.getByRole('button', { name: '取消', exact: true }).click(); assert.deepEqual(await state(), before);
   await open();
@@ -77,9 +83,9 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await check(); await page.getByRole('button', { name: '确认导入策略', exact: true }).scrollIntoViewIfNeeded();
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-  await page.screenshot({ path: 'test-results/v14-mobile.png' });
+  await page.screenshot({ path: 'test-results/v15-mobile.png' });
   await submit();
   assert.equal((await state()).alerts.length, 3);
   assert.deepEqual(errors, []);
-  console.log('PASS V1.4 explicit account and alert opt-in, dedupe, sources, isolation, date/JSON rejection, cancel, rollback/retry and mobile');
+  console.log('PASS V1.5 smart JSON repair, error location, explicit account and alert opt-in, dedupe, sources, isolation, cancel, rollback/retry and mobile');
 } finally { await browser.close(); }

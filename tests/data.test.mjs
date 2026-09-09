@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { extractTasks, parseExport, taskKey } from '../.test-build/data/chatTasks.js';
 import { parseBackup, restoreBackup } from '../.test-build/data/backup.js';
 import { createPlanAlerts, linkedToPlan } from '../.test-build/data/planAlerts.js';
-import { parseStrategy, prepareStrategy, persistStrategy, reminderIssue } from '../.test-build/data/strategyImport.js';
+import { parseStrategy, parseStrategyInput, prepareStrategy, persistStrategy, reminderIssue } from '../.test-build/data/strategyImport.js';
 
 const strategy = { format: 'jj-strategy-v1', date: '2026-09-08', title: '策略测试', tasks: [
   { phase: 'pre', title: '核对条件', detail: '等待确认，不自行补价格。', alert: null },
@@ -17,6 +17,15 @@ test('strategy parser accepts fenced JSON, preserves conditions and rejects ambi
   }
   assert.throws(() => parseStrategy(JSON.stringify({ ...strategy, userId: 'injected' })));
   assert.throws(() => parseStrategy(JSON.stringify({ ...strategy, date: '2026-02-30' })));
+});
+test('strategy parser repairs smart JSON boundaries without changing quoted Chinese content', () => {
+  const smart = '{“format”:“jj-strategy-v1”，“date”:“2026-09-09”，“title”:“格式修复”，“tasks”:[{“phase”:“live”，“title”:“检查联动”，“detail”:“核对“明显强势”和“明显走弱”的标准。”，“alert”:null}]}';
+  const result = parseStrategyInput(smart);
+  assert.equal(result.pack.tasks[0].detail, '核对“明显强势”和“明显走弱”的标准。');
+  assert.match(result.normalized, /{"format":"jj-strategy-v1","date"/);
+  assert.deepEqual(result.repairs, ['28 个中文结构引号', '6 个全角结构标点']);
+  assert.match(JSON.stringify(result.pack), /明显强势/);
+  assert.throws(() => parseStrategy('{"format":}'), /第 1 行.*第 \d+ 列/);
 });
 test('strategy import separates opt-in alerts and tasks and preserves paused duplicate rules', () => {
   const choices = [{ task: true, alert: false }, { task: true, alert: true }];
@@ -43,11 +52,12 @@ test('strategy multi-key storage failure rolls back instead of importing half a 
   assert.equal(state.get('jj-trading-v07-workflows'), 'old-workflows');
   assert.equal(state.get('jj-trading-v08-alerts'), 'old-alerts');
 });
-test('V1.4 backup roundtrip retains strategy provenance and remains compatible with older versions', () => {
+test('V1.5 backup roundtrip retains strategy provenance and remains compatible with older versions', () => {
   const data = fixture();
   const result = prepareStrategy(strategy, [{ task: true, alert: false }, { task: true, alert: true }], 'jj', [], [], strategyWatch, strategy.date);
   data['jj-trading-v07-workflows'] = result.workflows; data['jj-trading-v08-alerts'] = result.alerts;
   assert.deepEqual(parseBackup(JSON.stringify({ app: 'jj-trading-hub', version: 14, createdAt: '2026-09-08T00:00:00Z', data })).data, data);
+  assert.deepEqual(parseBackup(JSON.stringify({ app: 'jj-trading-hub', version: 15, createdAt: '2026-09-09T00:00:00Z', data })).data, data);
 });
 
 const plan = { id: 'plan1', userId: 'jj', symbol: '600001', name: '测试', entry: 10, stop: 9, target: 12, shares: 100, riskAmount: 100, capital: 1000, rewardRiskRatio: 2, createdAt: '2026-09-08T00:00:00Z' };

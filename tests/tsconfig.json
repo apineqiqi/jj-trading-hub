@@ -1,4 +1,4 @@
 {
   "compilerOptions": { "target": "ES2022", "module": "ESNext", "moduleResolution": "Bundler", "lib": ["ES2022", "DOM"], "strict": true, "skipLibCheck": true, "outDir": "../.test-build", "rootDir": "../src" },
-  "include": ["../src/data/chatTasks.ts", "../src/data/backup.ts", "../src/data/planAlerts.ts", "../src/data/strategyImport.ts"]
+  "include": ["../src/data/chatTasks.ts", "../src/data/backup.ts", "../src/data/planAlerts.ts", "../src/data/strategyImport.ts", "../src/data/close20260909.ts"]
 }

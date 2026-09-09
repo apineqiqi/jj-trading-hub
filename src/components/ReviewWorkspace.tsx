@@ -85,7 +85,7 @@ export function ReviewWorkspace({ cashKnown, users, selectedUserId, legacySnapsh
       userId: String(data.get('userId')),
       id: crypto.randomUUID(), date: String(data.get('date')), side: String(data.get('side')) as TradeSide,
       symbol: String(data.get('symbol')).trim(), name: String(data.get('name')).trim(),
-      shares: Number(data.get('shares')), price: Number(data.get('price')), fee: Number(data.get('fee') || 0),
+      shares: Number(data.get('shares')), price: Number(data.get('price')), fee: data.get('fee') === '' ? undefined : Number(data.get('fee')),
       note: String(data.get('note') || '').trim()
     });
     setTradeForm(false);
@@ -119,7 +119,7 @@ export function ReviewWorkspace({ cashKnown, users, selectedUserId, legacySnapsh
         <div className="snapshot-list">
           {sortedSnapshots.map(item => <article className="snapshot-row" key={item.id}>
             <time>{item.date}<small>{users.find(user => user.id === item.userId)?.name}</small><i></i></time>
-            <div><b>{privateMoney(item.totalAssets)}</b><span>{hidden ? '市值 •••••• · 现金 ••••••' : `市值 ¥${money.format(item.marketValue)} · 现金 ¥${money.format(item.cash)}`}</span>{item.note && <small>{item.note}</small>}</div>
+            <div><b>{privateMoney(item.totalAssets)}</b><span>{hidden ? '市值 •••••• · 现金 ••••••' : `市值 ¥${money.format(item.marketValue)} · 现金 ¥${money.format(item.cash)}`}</span>{!hidden && item.note && <small>{item.note}</small>}</div>
             <div className={hidden ? 'privacy-value snapshot-pnl' : item.unrealizedPnl >= 0 ? 'up snapshot-pnl' : 'down snapshot-pnl'}>{hidden ? '••••••' : `${item.unrealizedPnl >= 0 ? '+' : ''}¥${money.format(item.unrealizedPnl)}`}</div>
             <button className="tiny-btn danger" title={`删除 ${item.date} 快照`} onClick={() => onDeleteSnapshot(item)}><Trash2 size={14}/></button>
           </article>)}
@@ -130,8 +130,8 @@ export function ReviewWorkspace({ cashKnown, users, selectedUserId, legacySnapsh
         <div className="section-heading"><div><div className="section-title">交易日志</div><span className="section-meta">记录动作，也记录当时的理由</span></div><button className="tiny-add" onClick={() => setTradeForm(true)}><Plus size={14}/>新增</button></div>
         {sortedTrades.length ? <div className="trade-list">{sortedTrades.map(item => <article className="trade-row" key={item.id}>
           <div className={`side-icon ${item.side === '买入' ? 'buy' : 'sell'}`}>{item.side === '买入' ? <ArrowDownLeft size={16}/> : <ArrowUpRight size={16}/>}</div>
-          <div><b>{hidden ? '交易标的' : item.name}<em>{item.side}</em></b><small>{users.find(user => user.id === item.userId)?.name}</small><span>{hidden ? `${item.date} · •••••• · •••• 股 × ••••••` : `${item.date} · ${item.symbol} · ${item.shares} 股 × ¥${money.format(item.price)}`}</span>{item.note && <small>{item.note}</small>}</div>
-          <strong>{hidden ? '••••••' : `¥${money.format(item.shares * item.price + (item.side === '买入' ? item.fee : -item.fee))}`}</strong>
+          <div><b>{hidden ? '交易标的' : item.name}<em>{item.side}</em></b><small>{users.find(user => user.id === item.userId)?.name}</small><span>{hidden ? `${item.date} · •••••• · •••• 股 × ••••••` : `${item.date} · ${item.fee === undefined ? '费用待确认 / 金额未扣费 · ' : ''}${item.symbol} · ${item.shares} 股 × ¥${item.price.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}`}</span>{!hidden && item.note && <small>{item.note}</small>}</div>
+          <strong>{hidden ? '••••••' : `¥${money.format(item.shares * item.price + (item.side === '买入' ? (item.fee ?? 0) : -(item.fee ?? 0)))}`}</strong>
           <button className="tiny-btn danger" title={`删除 ${item.name} 交易`} onClick={() => onDeleteTrade(item)}><Trash2 size={14}/></button>
         </article>)}</div> : <div className="ledger-empty"><BookOpen size={26}/><b>还没有交易记录</b><span>从下一笔买卖开始，把动作和理由一起留下。</span><button className="ghost-btn" onClick={() => setTradeForm(true)}>记录第一笔</button></div>}
       </div>
@@ -163,7 +163,7 @@ export function ReviewWorkspace({ cashKnown, users, selectedUserId, legacySnapsh
           <label><span>股票名称</span><input name="name" placeholder="炬光科技" required/></label>
           <label><span>数量</span><input name="shares" type="number" min="1" step="1" required/></label>
           <label><span>成交价</span><input name="price" type="number" min="0" step="0.001" required/></label>
-          <label><span>费用</span><input name="fee" type="number" min="0" step="0.01" defaultValue="0"/></label>
+          <label><span>费用</span><input name="fee" type="number" min="0" step="0.01" placeholder="待确认，可留空"/></label>
           <label className="full-field"><span>交易理由 / 复盘备注</span><textarea name="note" placeholder="触发条件、执行偏差、下一步观察……"/></label>
         </div>
         <div className="modal-actions"><button type="button" className="ghost-btn" onClick={() => setTradeForm(false)}>取消</button><button className="primary-btn" type="submit">保存交易</button></div>

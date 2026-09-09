@@ -15,7 +15,7 @@ const validators: Record<string, Validator> = {
   'jj-trading-v06-positions': rows({ id: str, ...user, symbol: str, name: str, shares: num, cost: num, price: num, reportedMarketValue: optional(num), reportedPnl: optional(num), reportedReturnPct: optional(num) }),
   'jj-trading-v06-watchlist': rows({ ...user, symbol: str, name: str, price: num, changePct: num, group: str, score: num, state: str, note: str, support: optional(str), trigger: optional(str), invalidation: optional(str) }),
   'jj-trading-v04-snapshots': rows({ id: str, ...user, date: str, totalAssets: num, marketValue: num, cash: num, unrealizedPnl: num, note: optional(str) }),
-  'jj-trading-v04-trades': rows({ id: str, ...user, date: str, side: choice('买入', '卖出'), symbol: str, name: str, shares: num, price: num, fee: num, note: optional(str) }),
+  'jj-trading-v04-trades': rows({ id: str, ...user, date: str, side: choice('买入', '卖出'), symbol: str, name: str, shares: num, price: num, fee: optional(num), note: optional(str) }),
   'jj-trading-privacy-mode': bool,
   'jj-trading-v07-workflows': rows({ id: str, userId: str, date: str, checks: dictionary(bool), notes: dictionary(str), updatedAt: str, customTasks: optional(rows({ id: str, phase: choice('pre', 'live', 'close'), title: str, detail: str, sourceTitle: optional(str), importedAt: optional(str) })) }),
   'jj-trading-v08-alerts': rows({ id: str, userId: str, symbol: str, name: str, direction: choice('above', 'below'), target: num, label: str, enabled: bool, acknowledged: bool, createdAt: str, planId: optional(str), planLevel: optional(choice('entry', 'stop', 'target')), sourceTitle: optional(str) }),

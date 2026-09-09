@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { localDay, parseStrategy, prepareStrategy, reminderIssue, strategyPrompt, type StrategyPackage, type StrategySelection } from '../data/strategyImport';
+import { localDay, parseStrategyInput, prepareStrategy, reminderIssue, strategyPrompt, type StrategyPackage, type StrategySelection } from '../data/strategyImport';
 import type { DailyWorkflow, PriceAlert, UserProfile, WatchItem } from '../types/market';
 
 export function StrategyImporter({ users, selectedUserId, workflows, alerts, watchlist, onClose, onImport }: {
@@ -14,8 +14,8 @@ export function StrategyImporter({ users, selectedUserId, workflows, alerts, wat
   const [error, setError] = useState('');
   const today = localDay(); const prompt = strategyPrompt(today);
   const parsed = useMemo(() => {
-    if (!raw.trim()) return { pack: null, error: '' };
-    try { return { pack: parseStrategy(raw), error: '' }; } catch (error) { return { pack: null, error: (error as Error).message }; }
+    if (!raw.trim()) return { pack: null, normalized: '', repairs: [] as string[], error: '' };
+    try { return { ...parseStrategyInput(raw), error: '' }; } catch (error) { return { pack: null, normalized: '', repairs: [] as string[], error: (error as Error).message }; }
   }, [raw]);
   const choices = parsed.pack?.tasks.map((_, index) => selections[index] ?? { task: true, alert: false }) ?? [];
   let preview: ReturnType<typeof prepareStrategy> | null = null; let issue = parsed.error;
@@ -27,7 +27,7 @@ export function StrategyImporter({ users, selectedUserId, workflows, alerts, wat
     setSelections(current => ({ ...current, [index]: { ...choices[index], [field]: value } })); setConfirmed(false); setError('');
   };
   return <div className="modal-backdrop chat-import-backdrop"><section className="modal chat-import-modal strategy-import" role="dialog" aria-modal="true" aria-label="AI 策略快导">
-    <div className="modal-head"><div><span className="eyebrow">STRATEGY → TASKS + ALERTS · V1.4</span><h3>AI 策略快导</h3><p>一次粘贴，分别确认任务与价格边界。不会读取 AI 账户或自动下单。</p></div><button className="ghost-btn" onClick={onClose}>关闭</button></div>
+    <div className="modal-head"><div><span className="eyebrow">STRATEGY INTAKE · V1.5</span><h3>AI 策略快导</h3><p>一次粘贴，自动检查常见格式，再分别确认任务与价格边界。不会读取 AI 账户或自动下单。</p></div><button className="ghost-btn" onClick={onClose}>关闭</button></div>
     <div className="strategy-steps"><span>01 复制提示词给 AI</span><span>02 粘贴结果并核对</span><span>03 确认账户后导入</span></div>
     <div className="chat-import-grid"><div className="chat-source-panel chat-paste-fields">
       <button className="ghost-btn" onClick={async () => { try { await navigator.clipboard.writeText(prompt); setNotice('提示词已复制，请发给 AI 策略对话'); } catch { setNotice('复制不可用，请展开下方提示词，手动全选复制'); } }}>复制 AI 整理提示词</button>
@@ -35,6 +35,7 @@ export function StrategyImporter({ users, selectedUserId, workflows, alerts, wat
       {notice && <p role="status">{notice}</p>}
       <label>导入账户<select aria-label="导入账户" value={userId} onChange={event => { setUserId(event.target.value); setSelections({}); setConfirmed(false); setError(''); }}><option value="">请选择具体账户</option>{users.filter(user => !user.archived).map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label>
       <label>策略 JSON<textarea aria-label="策略 JSON" value={raw} onChange={event => { setRaw(event.target.value); setSelections({}); setConfirmed(false); setError(''); }} placeholder="把 AI 按提示词生成的 JSON 粘贴到这里，也支持 JSON 代码块。"/></label>
+      {!!parsed.repairs.length && <div className="strategy-repair" role="status"><div><b>已识别并安全修复常见格式</b><span>{parsed.repairs.join('、')}；正文中的中文引号保持不变。</span></div><button className="ghost-btn" onClick={() => { setRaw(parsed.normalized); setSelections({}); setConfirmed(false); setError(''); }}>替换为标准 JSON</button></div>}
       <p>仅导入今天 {today} 的策略。旧策略请先让 AI 重新复核；内容不上传。需要修改条件时，可直接编辑上方 JSON。</p>
       <p>提醒是独立的价格阈值，不验证量能、仓位或成交。勾选启用后，已满足的价格条件可能立即提示；暂停规则不会因重复导入而恢复。</p>
       {(issue || error) && <p className="form-error" role="alert">{error || issue}</p>}

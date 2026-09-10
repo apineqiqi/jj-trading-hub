@@ -14,7 +14,9 @@ const source: MarketDataSource = Object.freeze({ id: 'legacy-eastmoney', kind: '
 export function normalizeEastmoney(raw: RawQuote<EastmoneyQuote>): NormalizedQuote | null {
   const item = raw.rawPayload;
   if (typeof item.f2 !== 'number' || typeof item.f3 !== 'number' || typeof item.f18 !== 'number' ||
-    !Number.isFinite(item.f2) || item.f2 <= 0) return null;
+    ![item.f2, item.f3, item.f18, item.f124].every(Number.isFinite) ||
+    item.f2 <= 0 || item.f18 <= 0 || !/^\d{6}$/.test(item.f12) ||
+    !Number.isFinite(new Date(item.f124 * 1000).getTime())) return null;
   return {
     symbol: item.f12, name: item.f14, market: 'CN_A', last: item.f2 / 100,
     changePct: item.f3 / 100, prevClose: item.f18 / 100,

@@ -1,28 +1,12 @@
+import { closeAccount, closePositions, closeSnapshot, closeWatch } from './close20260909';
 import type { AccountSnapshot, DecisionRule, PortfolioSnapshot, Position, WatchItem } from '../types/market';
 
-export const accountSnapshot: AccountSnapshot = {
-  asOf: '2026-09-03 收盘',
-  totalAssets: 1071638.44,
-  marketValue: 1065192.00,
-  availableCash: 6446.44,
-  unrealizedPnl: 85541.32,
-  positionPct: 99.4
-};
+export const accountSnapshot: AccountSnapshot = closeAccount;
 
-export const initialPositions: Position[] = [
-  {
-    id: 'jj-688167', symbol: '688167', name: '炬光科技', owner: 'JJ', shares: 2200,
-    cost: 267.496, price: 284.180, reportedMarketValue: 625196.00,
-    reportedPnl: 36681.51, reportedReturnPct: 6.240
-  },
-  {
-    id: 'jj-688256', symbol: '688256', name: '寒武纪', owner: 'JJ', shares: 400,
-    cost: 977.764, price: 1099.990, reportedMarketValue: 439996.00,
-    reportedPnl: 48859.81, reportedReturnPct: 12.500
-  }
-];
+export const initialPositions: Position[] = closePositions;
 
 export const initialSnapshots: PortfolioSnapshot[] = [
+  closeSnapshot,
   {
     id: 'snapshot-2026-09-03',
     date: '2026-09-03',
@@ -34,7 +18,7 @@ export const initialSnapshots: PortfolioSnapshot[] = [
   }
 ];
 
-export const watchlist: WatchItem[] = [
+const historicalWatchlist: WatchItem[] = [
   {
     symbol: '688167', name: '炬光科技', price: 284.18, changePct: 1.87, group: 'CPO/激光', score: 7.5,
     state: '观察', support: '280', trigger: '突破并站稳 289', invalidation: '跌回 278 下方',
@@ -71,3 +55,8 @@ export const decisions: DecisionRule[] = [
   { id: 'jg-2', stock: '炬光科技', condition: '放量突破并站稳 289', action: '确认短线转强，进入进攻模式', priority: '高' },
   { id: 'jg-3', stock: '炬光科技', condition: '跌回 278 下方', action: '判定修复失败，降低仓位积极度', priority: '高' }
 ];
+
+export const watchlist: WatchItem[] = historicalWatchlist.map(item => closeWatch[item.symbol]
+  ? { ...item, ...closeWatch[item.symbol], price: closePositions.find(p => p.symbol === item.symbol)!.price,
+      changePct: item.symbol === '688167' ? 0.14 : -0.38 }
+  : item);

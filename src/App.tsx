@@ -1,5 +1,6 @@
 import { Activity, BellRing, BriefcaseBusiness, ChartNoAxesCombined, Eye, EyeOff, Gauge, LayoutDashboard, LibraryBig, ListChecks, ListFilter, ShieldAlert, ShieldCheck, UsersRound } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { closeAccount, closePositions, closeSnapshot, closeTrade, closeWatch, closeDecisions, appendCloseTrade } from './data/close20260909';
 import { AlertCenter } from './components/AlertCenter';
 import { DataManager } from './components/DataManager';
 import { StrategyImporter } from './components/StrategyImporter';
@@ -43,7 +44,7 @@ export default function App() {
   const [positions, setPositions] = usePersistentState<Position[]>('jj-trading-v06-positions', migratePositions());
   const [watchlist, setWatchlist] = usePersistentState<WatchItem[]>('jj-trading-v06-watchlist', migrateWatchlist());
   const [snapshots, setSnapshots] = usePersistentState<PortfolioSnapshot[]>('jj-trading-v04-snapshots', initialSnapshots);
-  const [trades, setTrades] = usePersistentState<TradeRecord[]>('jj-trading-v04-trades', []);
+  const [trades, setTrades] = usePersistentState<TradeRecord[]>('jj-trading-v04-trades', [closeTrade]);
   const [privacyMode, setPrivacyMode] = usePersistentState<boolean>('jj-trading-privacy-mode', false);
   const [workflows, setWorkflows] = usePersistentState<DailyWorkflow[]>('jj-trading-v07-workflows', []);
   const [alerts, setAlerts] = usePersistentState<PriceAlert[]>('jj-trading-v08-alerts', seedAlertRules(migrateWatchlist()));
@@ -212,13 +213,26 @@ export default function App() {
     <MarketPulse {...quoteState} onRefresh={() => void refreshQuotes()}/>
 
     <main>
+      {(selectedUserId === 'all' || selectedUserId === 'user-jj') && <section className="card">
+        <h2>2026-09-09 收盘更新 · JJ</h2>
+        <p>{privacyMode ? '持仓与成交信息已隐藏' : '炬光科技均价316.045元减400股，剩1800股；寒武纪400股。炬光从修复转为防守，寒武纪首次主支撑测试初步通过。'}</p>
+        <p>策略固定于9月9日收盘，不随实时行情变化。已有浏览器数据可用下方按钮同步；这会把JJ两只持仓、现金和观察条件恢复到该日收盘，请勿覆盖后续交易。</p>
+        <button className="ghost-btn" disabled={!users.some(u => u.id === 'user-jj' && !u.archived)} onClick={() => {
+          setPositions(current => [...current.filter(p => !(p.userId === 'user-jj' && closePositions.some(c => c.symbol === p.symbol))), ...closePositions]);
+          setCashByUser(current => ({ ...current, 'user-jj': closeAccount.availableCash }));
+          setWatchlist(current => current.map(w => w.userId === 'user-jj' && closeWatch[w.symbol] ? { ...w, ...closeWatch[w.symbol] } : w));
+          setTrades(appendCloseTrade);
+          setSnapshots(current => current.some(x => x.id === closeSnapshot.id || (x.userId === 'user-jj' && x.date === closeSnapshot.date)) ? current : [...current, closeSnapshot]);
+        }}>同步9月9日收盘记录到本机JJ账户</button>
+        {!privacyMode && <details><summary>9月9日收盘策略与复合条件</summary><DecisionTable rows={closeDecisions}/></details>}
+      </section>}
       {view === 'overview' && <>
         <section className="account-scope"><span style={{ background: activeProfile?.color ?? '#f2b84b' }}></span><UsersRound size={15}/><b>{activeProfile?.name ?? '全账户'}</b><small>{activeProfile ? '独立用户视角' : `${activeUsers.length} 位用户的合并视角`}</small></section>
         <button className="workflow-launch" onClick={() => setView('workflow')}>
           <span className="workflow-launch-icon"><ListChecks size={19}/></span><span><small>今日交易流程 · {workflowOwner}</small><b>{workflowCompleted === workflowTaskTotal ? '今日流程已完成' : `还有 ${workflowTaskTotal - workflowCompleted} 项待确认`}</b></span><span className="workflow-launch-progress"><i style={{ width: `${workflowCompleted / workflowTaskTotal * 100}%` }}/></span><em>{workflowCompleted}/{workflowTaskTotal}</em><span className="workflow-launch-cta">继续 <span>→</span></span>
         </button>
         <section className="hero card">
-          <div><span className="eyebrow">历史参考 · {accountSnapshot.asOf}</span><h2>设备 / 测试 / 激光强于光模块核心</h2><p>此判断来自历史样例，不随行情刷新更新。请在当日交易流程中记录新的判断和执行条件。</p></div>
+          <div><span className="eyebrow">历史参考 · 2026-09-03 收盘</span><h2>设备 / 测试 / 激光强于光模块核心</h2><p>此判断来自历史样例，不随行情刷新更新。请在当日交易流程中记录新的判断和执行条件。</p></div>
           <div className="hero-score"><span>历史环境</span><strong>分化</strong></div>
         </section>
         <section className="stats">
@@ -230,7 +244,7 @@ export default function App() {
           <StatCard title="进攻信号" value={String(attackSignals)} sub={attackSignals ? '观察池出现转强' : '暂无转强标的'} icon={<Gauge size={18}/>}/>
         </section>
         <PortfolioTable items={scopedPositions} users={users} showOwners={selectedUserId === 'all'} hidden={privacyMode} onAdd={() => setEditor({ kind: 'position' })} onEdit={value => setEditor({ kind: 'position', value })} onDelete={removePosition}/>
-        <p className="section-meta">以下为 {accountSnapshot.asOf} 的历史决策参考，不代表今日计划。</p><DecisionTable rows={decisions}/>
+        <p className="section-meta">以下为2026-09-03收盘的历史决策参考，不代表今日计划。</p><DecisionTable rows={decisions}/>
       </>}
 
       {view === 'portfolio' && <>

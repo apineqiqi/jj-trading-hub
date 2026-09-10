@@ -77,7 +77,7 @@ export interface TradeRecord {
   name: string;
   shares: number;
   price: number;
-  fee: number;
+  fee?: number;
   note?: string;
 }
 

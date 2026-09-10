@@ -1,5 +1,28 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { closeAccount, closePositions, closeTrade, appendCloseTrade } from '../.test-build/data/close20260909.js';
+
+test('September 9 evidence reconciles positions and cash without inventing fees', () => {
+  assert.equal(closePositions.reduce((sum, p) => sum + p.shares * p.price, 0), closeAccount.marketValue);
+  assert.equal(closeAccount.marketValue + closeAccount.availableCash, closeAccount.totalAssets);
+  assert.equal(closeTrade.price, 316.045);
+  assert.equal(closeTrade.shares + closePositions[0].shares, 2200);
+  assert.equal(closeTrade.fee, undefined);
+  const first = appendCloseTrade([]);
+  assert.deepEqual(appendCloseTrade(first), first);
+  const existing = [{ ...closeTrade, id: 'manual-record', fee: 70 }];
+  assert.deepEqual(appendCloseTrade(existing), existing);
+  assert.equal(appendCloseTrade([{ ...closeTrade, id: 'other', userId: 'other' }]).length, 2);
+});
+
+test('backup preserves unknown fees and rejects malformed fee values', () => {
+  const data = fixture();
+  data['jj-trading-v04-trades'] = [{ ...closeTrade, userId: 'jj' }];
+  const wrap = () => JSON.stringify({ app: 'jj-trading-hub', version: 15, createdAt: '2026-09-09T09:21:00Z', data });
+  assert.equal(parseBackup(wrap()).data['jj-trading-v04-trades'][0].fee, undefined);
+  data['jj-trading-v04-trades'][0].fee = 'unknown';
+  assert.throws(() => parseBackup(wrap()));
+});
 import { extractTasks, parseExport, taskKey } from '../.test-build/data/chatTasks.js';
 import { parseBackup, restoreBackup } from '../.test-build/data/backup.js';
 import { createPlanAlerts, linkedToPlan } from '../.test-build/data/planAlerts.js';

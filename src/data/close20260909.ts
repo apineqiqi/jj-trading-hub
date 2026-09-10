@@ -1,6 +1,6 @@
 import type { AccountSnapshot, DecisionRule, PortfolioSnapshot, Position, TradeRecord, WatchItem } from '../types/market';
 
-// Source: 周一开盘决策表, 2026-09-09 close; IMG_2735/2736 and confirmed conversation.
+// Source: 周一开盘决策表, 2026-09-09 close; IMG_2735/2736 and confirmed conversation. Reconfirmed by user on 2026-09-10.
 export const closeAccount: AccountSnapshot = {
   asOf: '2026-09-09 收盘', totalAssets: 1100467.22, marketValue: 966574,
   availableCash: 133893.22, unrealizedPnl: 114431.24, positionPct: 87.8,
@@ -23,16 +23,16 @@ export const closeTrade: TradeRecord = {
   note: '计划内波段减仓：均价316.045元减400股，剩余1800股。来源：当日成交截图 IMG_2736。费用、逐笔成交时间及实际触发路径未确认；不以收盘结果倒推盘中复合条件已全部满足。不机械回补。',
 };
 export const closeWatch: Record<string, Pick<WatchItem, 'state' | 'support' | 'trigger' | 'invalidation' | 'note'>> = {
-  '688167': { state: '防守', support: '300–303；下一防守区289–292',
-    trigger: '重新站稳307–310；314–316压力；318–320强压力/突破确认',
+  '688167': { state: '防守', support: '300–303核心防守；下一防守区289–292',
+    trigger: '重新站稳307–310为第一修复确认；314–316反弹压力；318–320强压力/突破确认',
     invalidation: '有效跌破300且反抽303失败',
-    note: '2026-09-09收盘302.55：从修复转为修复失败后的防守。先守300–303，再收复307–310，再观察314–316和318–320。评分沿用历史值，未重新确认。' },
+    note: '2026-09-09收盘302.55：修复失败后进入防守确认。先守300–303，再收复307–310，再观察314–316和318–320。评分沿用历史值，未重新确认。' },
   '688256': { state: '等待确认', support: '1035–1050主支撑观察区；下一级995–1015',
     trigger: '重新站稳1070，确认修复', invalidation: '跌破1035且无法收回，转看995–1015',
-    note: '2026-09-09低点1045.99、收盘1054.96：第一次主支撑测试初步通过，尚未确认反转。结合动态MA250及国产GPU相对强弱；MA250精确数值待确认。评分沿用历史值。' },
+    note: '2026-09-09日内高1070.19、低1045.99、收盘1054.96：第一次主支撑测试初步通过，尚未确认反转。结合动态MA250及国产GPU相对强弱；MA250精确数值待确认。评分沿用历史值。' },
 };
 export const closeDecisions: DecisionRule[] = [
-  { id: 'jg-framework', stock: '炬光科技', condition: '核心底仓与波段仓分层管理', action: '核心底仓计划占炬光仓位60%–70%，波段仓30%–40%；实际拆分待确认。普通日内波动不轻易调整核心底仓。', priority: '高' },
+  { id: 'jg-framework', stock: '炬光科技', condition: '核心底仓与波段仓分层管理', action: '核心底仓计划占炬光仓位60%–70%，波段仓30%–40%；实际拆分待确认。执行框架：减波段仓、不动核心仓。普通日内波动不轻易调整核心底仓。', priority: '高' },
   { id: 'jg-defense', stock: '炬光科技', condition: '300–303出现明显承接，且CPO没有进一步退潮', action: '进入已减出400股的回补观察，不因触价机械买回；每档回补比例待确认。', priority: '高' },
   { id: 'jg-repair', stock: '炬光科技', condition: '重新站上并保持307–310，且CPO核心未明显转弱', action: '仅确认修复，不急于补满；再次跌回307以下且无法收复则修复失效。', priority: '高' },
   { id: 'jg-strength', stock: '炬光科技', condition: '站稳314–316，且中际旭创/新易盛/天孚通信至少两只保持明显强势', action: '再观察318–320突破；快速跌回314且板块转弱则确认失效，不追涨。', priority: '高' },

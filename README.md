@@ -199,3 +199,22 @@ Vite 的 base 为 `/jj-trading-hub/`；发布流程安装锁定依赖、运行�
 - `node tests/strategy-center.ui.test.mjs`：验证 V1.6 策略档案、账户隔离、来源状态、旧版降级提示、来源跳转、刷新保持和手机端布局。
 - 浏览器验收：先运行 `python tests/serve.py`，再在已安装 Playwright 的环境运行 `node tests/ui.test.mjs`；使用独立无头 Edge 与测试数据，覆盖账户隔离、任务编辑、恢复和保存失败。截图在被忽略的 `test-results/` 中。
 - Windows 受限环境若 realpath 解析祖先目录报 EPERM，可先运行类型检查，再运行 `node --preserve-symlinks --preserve-symlinks-main tests/build-local.mjs`；使用同一 React 插件和 Pages base，保持路径不解析符号链接。
+
+## V2 Architecture Foundation
+
+本阶段在 V1.6 上建立领域边界，保留现有 UI、localStorage 键、备份格式、策略档案和业务行为，不迁移浏览器数据，不接入真实 iFinD / Choice API。
+
+- **Market Truth**：供应商原始证据 RawQuote → 标准化 NormalizedQuote → 带校验元数据 VerifiedQuote。Raw 保留原始值、供应商时间和接收时间；标准化数据可以重算。状态为 VERIFIED / PRIMARY_ONLY / SECONDARY_ONLY / STALE / CONFLICT / UNAVAILABLE。VerifiedQuote 是结果容器的名称，并不意味着 status 必然 VERIFIED。
+- **Portfolio Truth**：PortfolioAccount、TradeLedgerEntry、CashLedgerEntry、PositionSnapshot、ReconciliationRecord。适配器复制 V1 持仓并保留券商报告字段，未知账户/费用/现金为 null，不推断成 JJ 或零。交易记录一律 RECORD_ONLY，绝不自动改变持仓和现金；尚无账本回放、对账执行或现金记账引擎。
+- **Strategy Truth**：StrategyVersion、StockState、Trigger、Invalidation、Transition、ActionSuggestion 表达版本、价格区间、持续时间、人工复核条件和状态引用。可表达 300–303 / 307–310 / 314–316 / 318–320 / 293。这些是模型示例，不自动导入当前策略，不执行状态迁移；现有 V1.6 不可变策略档案保持原样。
+- **Execution Truth**：实际成交与人工执行证据由现有 TradeRecord 和仅记录账本表达，通过 review 关联复盘与对账。策略建议和提醒命中不等于成交。
+
+领域入口位于 src/domains/{market,portfolio,strategy,review,alerts,ai}。App 通过 MarketDataService.getQuotes 调用 LegacyEastmoneyProvider，再经 toLegacyMarketQuotes 投影为 V1 页面字段。旧 services/quotes.ts 仅作兼容入口；策略不依赖 fetchMarketQuotes。alerts / strategy 入口复用现有实现，review 提供执行证据类型边界，ai 提供只读 DecisionContext；后续逐步迁移实现，避免一次性改写 App。
+
+LegacyEastmoneyProvider 保持原接口、六位代码过滤/去重、价格单位、8 秒超时、错误传播和刷新行为。延迟源保守标为 STALE（不表示已实现交易日历或实时超时判定），缺失有效价格标为 UNAVAILABLE；session 为 UNKNOWN，置信度为 null，未返回的 OHLC/量额为 null。未返回标的仍保持原页面价格；旧页面继续显示有效延迟价格。这是显式 V1 兼容，不应作为 V2 实时策略的准入规则。未来 V2 策略必须拒绝 STALE / CONFLICT / UNAVAILABLE，并为单源定义明确降级策略。
+
+**Web 搜索不得覆盖 Market Truth。** 新闻、AI 输出和用户截图仅是独立上下文/人工证据，不能删除或覆盖供应商原始记录。人工纠正需保留冲突、证据与处理来源；完整纠错流程尚未实现。AI 不生成行情、持仓或成交事实。
+
+下一阶段再实现服务端 Market Gateway、真实供应商接入、交易时段/时间戳可比性校验、双源核对、持久化和后台监控。本阶段没有新密钥、网络服务、自动下单或页面关闭后的监控。
+
+验证：npm test 同时运行原数据回归测试与 domains.test.mjs，覆盖状态常量、延迟行情标准化与兼容投影、请求失败、账本校验与非自动记账、策略结构/非法状态引用。npm run build 完成全量 TypeScript 检查和生产构建。

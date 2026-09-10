@@ -5,8 +5,8 @@ import { AlertCenter } from './components/AlertCenter';
 import { DataManager } from './components/DataManager';
 import { StrategyImporter } from './components/StrategyImporter';
 import { StrategyCenter } from './components/StrategyCenter';
-import { prepareStrategy, persistStrategy } from './data/strategyImport';
-import { createStrategyRecord } from './data/strategyRecords';
+import { prepareStrategy, persistStrategy } from './domains/strategy';
+import { createStrategyRecord } from './domains/strategy';
 import { DecisionTable } from './components/DecisionTable';
 import { EditorModal } from './components/EditorModal';
 import { MarketPulse, type QuoteStatus } from './components/MarketPulse';
@@ -20,11 +20,11 @@ import { UserSwitcher } from './components/UserSwitcher';
 import { VisualReviewBoard } from './components/VisualReviewBoard';
 import { WatchTable } from './components/WatchTable';
 import { accountSnapshot, decisions, initialPositions, initialSnapshots, watchlist as initialWatchlist } from './data/mock';
-import { seedAlertRules } from './data/alerts';
-import { createPlanAlerts, linkedToPlan } from './data/planAlerts';
+import { seedAlertRules } from './domains/alerts';
+import { createPlanAlerts, linkedToPlan } from './domains/alerts';
 import { defaultUser, migratePositions, migrateUsers, migrateWatchlist } from './data/migration';
 import { usePersistentState, useSaveStatus } from './hooks/usePersistentState';
-import { fetchMarketQuotes } from './services/quotes';
+import { marketDataService, toLegacyMarketQuotes } from './domains/market';
 import type { DailyWorkflow, PortfolioSnapshot, Position, PriceAlert, RiskPlan, RiskProfile, TradeRecord, UserProfile, VisualReviewRecord, WatchItem } from './types/market';
 import type { StrategyRecord } from './types/strategy';
 
@@ -75,7 +75,7 @@ export default function App() {
   const refreshQuotes = useCallback(async () => {
     setQuoteState(current => ({ ...current, status: 'loading', message: undefined }));
     try {
-      const quotes = await fetchMarketQuotes(trackedSymbols.split(','));
+      const quotes = toLegacyMarketQuotes(await marketDataService.getQuotes(trackedSymbols.split(',')));
       if (!quotes.length) throw new Error('未返回有效行情');
       const bySymbol = new Map(quotes.map(quote => [quote.symbol, quote]));
       setPositions(current => current.map(item => {

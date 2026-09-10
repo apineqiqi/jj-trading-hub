@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test": "tsc -p tests/tsconfig.json && node --test tests/data.test.mjs",
+    "test": "tsc -p tests/tsconfig.json && node --test tests/data.test.mjs tests/domains.test.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview"
   },

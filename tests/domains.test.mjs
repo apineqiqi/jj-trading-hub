@@ -145,3 +145,64 @@ test('legacy malformed numeric or timestamp rows cannot poison valid display quo
   assert.equal(toLegacyMarketQuotes(result).length, 1);
   assert.deepEqual(result.slice(1).map(q => q.status), Array(4).fill('UNAVAILABLE'));
 });
+
+import { reconcilePortfolio } from '../.test-build/domains/portfolio/index.js';
+const accountSnapshotFixture = (changes = {}) => ({
+  accountId: 'jj', asOf: '2026-09-10', currency: 'CNY', cash: 10000,
+  positions: [{ symbol: '688167', quantity: 1800 }], positionsComplete: true, ...changes,
+});
+test('portfolio reconciliation matches explicit evidence and copies snapshots without posting', () => {
+  const a = accountSnapshotFixture(), b = accountSnapshotFixture();
+  const before = JSON.stringify([a, b]);
+  const result = reconcilePortfolio('r', 'broker-statement-1', a, b);
+  assert.equal(result.status, 'MATCHED');
+  assert.equal(result.evidenceRef, 'broker-statement-1');
+  assert.deepEqual(result.differences, []);
+  assert.equal(JSON.stringify([a, b]), before);
+  assert.notEqual(result.recordedSnapshot, a);
+  assert.notEqual(result.recordedSnapshot.positions[0], a.positions[0]);
+  a.positions[0].quantity = 2200;
+  assert.equal(result.recordedSnapshot.positions[0].quantity, 1800);
+});
+test('portfolio reconciliation detects cash and share differences deterministically', () => {
+  const result = reconcilePortfolio('r', 'evidence', accountSnapshotFixture(),
+    accountSnapshotFixture({ cash: 12000, positions: [{ symbol: '688167', quantity: 2200 }] }));
+  assert.equal(result.status, 'MISMATCH');
+  assert.deepEqual(result.differences, [
+    { field: 'cash', recorded: 10000, observed: 12000 },
+    { field: 'quantity:688167', recorded: 1800, observed: 2200 },
+  ]);
+  assert.equal(reconcilePortfolio('r', 'e', accountSnapshotFixture(), accountSnapshotFixture({ cash: 10000.01 })).status, 'MATCHED');
+  assert.equal(reconcilePortfolio('r', 'e', accountSnapshotFixture(), accountSnapshotFixture({ cash: 10000.02 })).status, 'MISMATCH');
+});
+test('missing holdings require complete statements and unknown values stay pending', () => {
+  const a = accountSnapshotFixture();
+  assert.equal(reconcilePortfolio('r', 'e', a, accountSnapshotFixture({ positions: [] })).status, 'MISMATCH');
+  const partial = reconcilePortfolio('r', 'e', a, accountSnapshotFixture({ positions: [], positionsComplete: false }));
+  assert.equal(partial.status, 'PENDING');
+  assert.equal(partial.differences[0].observed, null);
+  assert.equal(reconcilePortfolio('r', 'e', a, accountSnapshotFixture({ cash: null })).status, 'PENDING');
+  assert.equal(reconcilePortfolio('r', 'e', accountSnapshotFixture({ cash: null }), accountSnapshotFixture({ cash: null })).status, 'PENDING');
+  assert.equal(reconcilePortfolio('r', 'e', accountSnapshotFixture({ positionsComplete: false }), a).status, 'PENDING');
+  assert.equal(reconcilePortfolio('r', 'e', a, accountSnapshotFixture({ cash: null, positions: [] })).status, 'MISMATCH');
+});
+test('portfolio reconciliation refuses mixed accounts/currencies and never compares different dates', () => {
+  const a = accountSnapshotFixture();
+  assert.throws(() => reconcilePortfolio('r', 'e', a, accountSnapshotFixture({ accountId: 'other' })), /accounts/);
+  assert.throws(() => reconcilePortfolio('r', 'e', a, accountSnapshotFixture({ currency: 'USD' })), /currencies/);
+  const result = reconcilePortfolio('r', 'e', a, accountSnapshotFixture({ asOf: '2026-09-09', cash: 0 }));
+  assert.equal(result.status, 'PENDING');
+  assert.deepEqual(result.differences, []);
+  assert.deepEqual(result.issues, ['valuationDateMismatch']);
+});
+test('portfolio reconciliation validates evidence, duplicate holdings, dates and finite values', () => {
+  const a = accountSnapshotFixture();
+  assert.throws(() => reconcilePortfolio('r', '', a, a), /evidence/);
+  assert.throws(() => reconcilePortfolio('r', 'e', a, a, -1), /tolerance/);
+  for (const changes of [
+    { cash: NaN }, { asOf: '2026-02-30' }, { positionsComplete: undefined },
+    { positions: [{ symbol: '688167', quantity: -1 }] },
+    { positions: [{ symbol: '688167', quantity: Infinity }] },
+    { positions: [{ symbol: '688167', quantity: 1 }, { symbol: '688167', quantity: 2 }] },
+  ]) assert.throws(() => reconcilePortfolio('r', 'e', a, accountSnapshotFixture(changes)));
+});

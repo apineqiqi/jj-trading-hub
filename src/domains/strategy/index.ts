@@ -1,6 +1,7 @@
 export { createStrategyRecord } from '../../data/strategyRecords.js';
 export { prepareStrategy, persistStrategy } from '../../data/strategyImport.js';
 export type { StrategyRecord } from '../../types/strategy.js';
+export * from './evaluation.js';
 export interface Trigger {
   readonly id: string;
   readonly kind: 'PRICE_ZONE' | 'ABOVE' | 'BELOW';

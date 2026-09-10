@@ -206,3 +206,72 @@ test('portfolio reconciliation validates evidence, duplicate holdings, dates and
     { positions: [{ symbol: '688167', quantity: 1 }, { symbol: '688167', quantity: 2 }] },
   ]) assert.throws(() => reconcilePortfolio('r', 'e', a, accountSnapshotFixture(changes)));
 });
+
+import { evaluateStrategy } from '../.test-build/domains/strategy/index.js';
+const strategyFixture = () => ({
+  id: 'v1', seriesId: 'jg', version: 1, previousVersionId: null, accountId: 'jj',
+  symbol: '688167', createdAt: '2026-09-10', sourceRef: 'fixture', initialStateId: 'DEFENSIVE',
+  states: ['DEFENSIVE', 'REPAIR', 'STRONG'].map(id => ({ id, label: id,
+    zone: { id: id + '-zone', kind: 'PRICE_ZONE', lower: 300, upper: 320 }, invalidations: [] })),
+  transitions: [{ id: 'repair', from: 'DEFENSIVE', to: 'REPAIR',
+    trigger: { id: 'reclaim', kind: 'PRICE_ZONE', lower: 307, upper: 310 },
+    invalidations: [], action: { kind: 'OBSERVE', rationale: '复核', requiresManualConfirmation: true } }],
+});
+const assess = (s, price = 308, changes = {}) => {
+  const market = reconcile(quoteFixture(primarySource, { last: price }), quoteFixture(secondarySource, { last: price }));
+  return evaluateStrategy(s, 'jj', 'DEFENSIVE', { ...market, ...changes }, policy);
+};
+test('strategy evaluation produces one-hop candidates without changing state or inputs', () => {
+  const s = strategyFixture(), before = JSON.stringify(s);
+  const result = assess(s);
+  assert.equal(result.status, 'EVALUATED');
+  assert.equal(result.currentStateId, 'DEFENSIVE');
+  assert.equal(result.transitions[0].status, 'CANDIDATE');
+  assert.equal(result.transitions[0].suggestion.requiresManualConfirmation, true);
+  assert.equal(JSON.stringify(s), before);
+  assert.notEqual(result.transitions[0].suggestion, s.transitions[0].action);
+  s.transitions.push({ ...s.transitions[0], id: 'next', from: 'REPAIR', to: 'STRONG' });
+  assert.equal(assess(s).transitions.length, 1);
+});
+test('price zones are inclusive and above/below are strict comparisons, not crossing events', () => {
+  const s = strategyFixture();
+  for (const price of [307, 310]) assert.equal(assess(s, price).transitions[0].status, 'CANDIDATE');
+  assert.equal(assess(s, 306).transitions[0].status, 'NOT_TRIGGERED');
+  s.transitions[0].trigger = { id: 'above', kind: 'ABOVE', lower: 310, upper: 310 };
+  assert.equal(assess(s, 310).transitions[0].status, 'NOT_TRIGGERED');
+  assert.equal(assess(s, 311).transitions[0].status, 'CANDIDATE');
+  s.transitions[0].trigger.kind = 'BELOW';
+  assert.equal(assess(s, 310).transitions[0].status, 'NOT_TRIGGERED');
+  assert.equal(assess(s, 309).transitions[0].status, 'CANDIDATE');
+});
+test('duration and composite evidence remain pending; invalidation takes precedence', () => {
+  const s = strategyFixture();
+  s.transitions[0].trigger.holdSeconds = 300;
+  assert.equal(assess(s).transitions[0].status, 'PENDING');
+  assert.equal(assess(s).transitions[0].suggestion, null);
+  delete s.transitions[0].trigger.holdSeconds;
+  s.transitions[0].trigger.confirmation = '至少两只同行走强';
+  assert.equal(assess(s).transitions[0].status, 'PENDING');
+  delete s.transitions[0].trigger.confirmation;
+  s.states[0].invalidations.push({ trigger: { id: 'risk', kind: 'BELOW', lower: 309, upper: 309 }, reason: '防守失效' });
+  assert.equal(assess(s).transitions[0].status, 'INVALIDATED');
+  s.states[0].invalidations[0].trigger.holdSeconds = 60;
+  assert.equal(assess(s).transitions[0].status, 'PENDING');
+});
+test('strategy rejects unusable market data, account/symbol mismatches and malformed plans', () => {
+  const s = strategyFixture();
+  for (const status of ['STALE', 'CONFLICT', 'UNAVAILABLE', 'PRIMARY_ONLY']) {
+    assert.equal(assess(s, 308, { status }).status, 'BLOCKED');
+  }
+  s.accountId = 'other';
+  assert.ok(assess(s).reasons.includes('accountMismatch'));
+  s.accountId = 'jj'; s.symbol = '000001';
+  assert.ok(assess(s).reasons.includes('symbolMismatch'));
+  s.symbol = '688167'; s.transitions[0].to = 'missing';
+  assert.equal(assess(s).status, 'BLOCKED');
+});
+test('multiple eligible transitions remain separate candidates without automatic priority', () => {
+  const s = strategyFixture();
+  s.transitions.push({ ...s.transitions[0], id: 'alternative', to: 'STRONG' });
+  assert.deepEqual(assess(s).transitions.map(t => t.status), ['CANDIDATE', 'CANDIDATE']);
+});

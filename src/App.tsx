@@ -1,9 +1,11 @@
-import { Activity, BellRing, BriefcaseBusiness, ChartNoAxesCombined, Eye, EyeOff, Gauge, LayoutDashboard, ListChecks, ListFilter, ShieldAlert, ShieldCheck, UsersRound } from 'lucide-react';
+import { Activity, BellRing, BriefcaseBusiness, ChartNoAxesCombined, Eye, EyeOff, Gauge, LayoutDashboard, LibraryBig, ListChecks, ListFilter, ShieldAlert, ShieldCheck, UsersRound } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCenter } from './components/AlertCenter';
 import { DataManager } from './components/DataManager';
 import { StrategyImporter } from './components/StrategyImporter';
+import { StrategyCenter } from './components/StrategyCenter';
 import { prepareStrategy, persistStrategy } from './data/strategyImport';
+import { createStrategyRecord } from './data/strategyRecords';
 import { DecisionTable } from './components/DecisionTable';
 import { EditorModal } from './components/EditorModal';
 import { MarketPulse, type QuoteStatus } from './components/MarketPulse';
@@ -23,8 +25,9 @@ import { defaultUser, migratePositions, migrateUsers, migrateWatchlist } from '.
 import { usePersistentState, useSaveStatus } from './hooks/usePersistentState';
 import { fetchMarketQuotes } from './services/quotes';
 import type { DailyWorkflow, PortfolioSnapshot, Position, PriceAlert, RiskPlan, RiskProfile, TradeRecord, UserProfile, VisualReviewRecord, WatchItem } from './types/market';
+import type { StrategyRecord } from './types/strategy';
 
-type View = 'overview' | 'workflow' | 'portfolio' | 'watchlist' | 'risk' | 'review';
+type View = 'overview' | 'workflow' | 'strategies' | 'portfolio' | 'watchlist' | 'risk' | 'review';
 type EditorTarget = { kind: 'position'; value?: Position } | { kind: 'watch'; value?: WatchItem };
 
 export default function App() {
@@ -33,6 +36,7 @@ export default function App() {
   const [dataOpen, setDataOpen] = useState(false);
   const [strategyOpen, setStrategyOpen] = useState(false);
   const [strategyResult, setStrategyResult] = useState('');
+  const [focusedStrategyId, setFocusedStrategyId] = useState('');
   const [cashByUser, setCashByUser] = usePersistentState<Record<string, number>>('jj-trading-v12-cash', { [defaultUser.id]: accountSnapshot.availableCash });
   const [users, setUsers] = usePersistentState<UserProfile[]>('jj-trading-v06-users', migrateUsers());
   const [activeUserId, setActiveUserId] = usePersistentState<string>('jj-trading-v06-active-user', 'all');
@@ -46,6 +50,7 @@ export default function App() {
   const [visualReviews, setVisualReviews] = usePersistentState<VisualReviewRecord[]>('jj-trading-v09-visual-reviews', []);
   const [riskProfiles, setRiskProfiles] = usePersistentState<RiskProfile[]>('jj-trading-v10-risk-profiles', []);
   const [riskPlans, setRiskPlans] = usePersistentState<RiskPlan[]>('jj-trading-v10-risk-plans', []);
+  const [strategies, setStrategies] = usePersistentState<StrategyRecord[]>('jj-trading-v16-strategies', []);
   const [editor, setEditor] = useState<EditorTarget | null>(null);
   const [managingUsers, setManagingUsers] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
@@ -139,6 +144,7 @@ export default function App() {
     'jj-trading-v08-alerts': alerts, 'jj-trading-v09-visual-reviews': visualReviews,
     'jj-trading-v10-risk-profiles': riskProfiles, 'jj-trading-v10-risk-plans': riskPlans,
     'jj-trading-v12-cash': cashByUser,
+    'jj-trading-v16-strategies': strategies,
   };
   const workflowTaskTotal = 12 + (workflow.customTasks?.length ?? 0);
   const workflowTaskIds = new Set(workflow.customTasks?.map(item => item.id) ?? []);
@@ -187,13 +193,14 @@ export default function App() {
 
   return <div className="app-shell">
     <header>
-      <div><div className="brand-line"><span className="eyebrow">JJ PERSONAL TRADING OS</span><span className="version-badge">V1.5</span></div><h1>JJ 交易中枢</h1></div>
+      <div><div className="brand-line"><span className="eyebrow">JJ PERSONAL TRADING OS</span><span className="version-badge">V1.6</span></div><h1>JJ 交易中枢</h1></div>
       <div className="header-actions"><UserSwitcher users={users} value={selectedUserId} onChange={setActiveUserId} onManage={() => setManagingUsers(true)}/><button className={`privacy-toggle ${privacyMode ? 'active' : ''}`} aria-pressed={privacyMode} onClick={() => setPrivacyMode(value => !value)}>{privacyMode ? <Eye size={17}/> : <EyeOff size={17}/>}<span>{privacyMode ? '显示持仓' : '隐藏持仓'}</span></button><button className={`icon-btn alert-trigger ${triggeredAlerts ? 'hot' : ''}`} title="条件提醒" onClick={() => setAlertsOpen(true)}><BellRing size={20}/>{triggeredAlerts > 0 && <span>{triggeredAlerts}</span>}</button></div>
     </header>
 
     <nav className="workspace-nav" aria-label="工作区">
       <button className={view === 'overview' ? 'active' : ''} onClick={() => setView('overview')}><LayoutDashboard size={16}/>总览</button>
       <button className={view === 'workflow' ? 'active' : ''} onClick={() => setView('workflow')}><ListChecks size={16}/>交易日 <span>{workflowCompleted}/{workflowTaskTotal}</span></button>
+      <button className={view === 'strategies' ? 'active' : ''} onClick={() => { setFocusedStrategyId(''); setView('strategies'); }}><LibraryBig size={16}/>策略中心 <span>{selectedUserId === 'all' ? strategies.length : strategies.filter(item => item.userId === selectedUserId).length}</span></button>
       <button className={view === 'portfolio' ? 'active' : ''} onClick={() => setView('portfolio')}><BriefcaseBusiness size={16}/>持仓 <span>{scopedPositions.length}</span></button>
       <button className={view === 'watchlist' ? 'active' : ''} onClick={() => setView('watchlist')}><ListFilter size={16}/>观察池 <span>{scopedWatchlist.length}</span></button>
       <button className={view === 'risk' ? 'active' : ''} onClick={() => setView('risk')}><ShieldAlert size={16}/>风控 <span>{visibleRiskPlans.length}</span></button>
@@ -236,7 +243,9 @@ export default function App() {
         <WatchTable items={scopedWatchlist} users={users} showOwners={selectedUserId === 'all'} onAdd={() => setEditor({ kind: 'watch' })} onEdit={value => setEditor({ kind: 'watch', value })} onDelete={removeWatch}/>
       </>}
 
-      {view === 'workflow' && <>{strategyResult && <p className="strategy-result" role="status">{strategyResult}<button className="ghost-btn" onClick={() => setAlertsOpen(true)}>查看提醒中心</button></p>}<TradingWorkflow onImportStrategy={() => { setStrategyOpen(true); setStrategyResult(''); }} record={workflow} ownerName={workflowOwner} positions={workflowPositions.length} attackSignals={workflowWatchlist.filter(item => item.state === '转强').length} positionPct={workflowPositionPct} cashKnown={cashByUser[workflowUserId] !== undefined} portfolioLimit={disciplineProfile.portfolioPct} hidden={privacyMode} onChange={saveWorkflow}/></>}
+      {view === 'workflow' && <>{strategyResult && <p className="strategy-result" role="status">{strategyResult}<button className="ghost-btn" onClick={() => setAlertsOpen(true)}>查看提醒中心</button></p>}<TradingWorkflow onImportStrategy={() => { setStrategyOpen(true); setStrategyResult(''); }} onOpenStrategy={id => { setFocusedStrategyId(id); setView('strategies'); }} record={workflow} ownerName={workflowOwner} positions={workflowPositions.length} attackSignals={workflowWatchlist.filter(item => item.state === '转强').length} positionPct={workflowPositionPct} cashKnown={cashByUser[workflowUserId] !== undefined} portfolioLimit={disciplineProfile.portfolioPct} hidden={privacyMode} onChange={saveWorkflow}/></>}
+
+      {view === 'strategies' && <StrategyCenter strategies={strategies} users={users} selectedUserId={selectedUserId} workflows={workflows} alerts={alerts} focusedStrategyId={focusedStrategyId} onImport={() => { setStrategyOpen(true); setStrategyResult(''); }}/>}
 
       {view === 'risk' && <RiskWorkbench
         users={users}
@@ -295,16 +304,20 @@ export default function App() {
 
     {editor && <EditorModal target={editor} users={activeUsers} defaultUserId={editorUserId} onClose={() => setEditor(null)} onSave={saveEditor}/>}
     {dataOpen && <DataManager users={users} cash={cashByUser} onCash={setCashByUser} data={backupData} onClose={() => setDataOpen(false)}/>}
-    {strategyOpen && <StrategyImporter users={users} selectedUserId={selectedUserId} workflows={workflows} alerts={alerts} watchlist={watchlist} onClose={() => setStrategyOpen(false)} onImport={(pack, selections, userId) => {
+    {strategyOpen && <StrategyImporter users={users} selectedUserId={selectedUserId} workflows={workflows} alerts={alerts} watchlist={watchlist} onClose={() => setStrategyOpen(false)} onImport={(pack, selections, userId, metadata) => {
       if (!activeUsers.some(user => user.id === userId)) throw new Error('请选择有效账户');
-      const result = prepareStrategy(pack, selections, userId, workflows, alerts, watchlist);
+      const strategyId = crypto.randomUUID();
+      const importedAt = new Date().toISOString();
+      const result = prepareStrategy(pack, selections, userId, workflows, alerts, watchlist, today, { strategyId, importedAt });
       if (!(result.addedTasks + result.addedAlerts)) throw new Error('没有需要新增的任务或提醒');
-      persistStrategy(result.workflows, result.alerts);
-      setWorkflows(result.workflows); setAlerts(result.alerts); setActiveUserId(userId);
-      setStrategyResult(`已导入 ${result.addedTasks} 项任务、${result.addedAlerts} 条提醒。跳过 ${result.skippedTasks} 项重复任务、${result.skippedAlerts} 条重复提醒。`);
+      const record = createStrategyRecord({ id: strategyId, userId, importedAt, pack, links: result.links, repairs: metadata.repairs });
+      const nextStrategies = [record, ...strategies];
+      persistStrategy(result.workflows, result.alerts, nextStrategies);
+      setWorkflows(result.workflows); setAlerts(result.alerts); setStrategies(nextStrategies); setActiveUserId(userId); setFocusedStrategyId(strategyId);
+      setStrategyResult(`已导入 ${result.addedTasks} 项任务、${result.addedAlerts} 条提醒，并建立策略来源档案。跳过 ${result.skippedTasks} 项重复任务、${result.skippedAlerts} 条重复提醒。`);
       setStrategyOpen(false);
     }}/>}
     {managingUsers && <UserManagerModal users={users} onClose={() => setManagingUsers(false)} onAdd={addUser} onUpdate={updateUser} onToggleArchive={toggleArchive}/>}
-    {alertsOpen && <AlertCenter alerts={alerts} watchlist={watchlist} users={users} selectedUserId={selectedUserId} hidden={privacyMode} onClose={() => setAlertsOpen(false)} onChange={setAlerts}/>}
+    {alertsOpen && <AlertCenter alerts={alerts} watchlist={watchlist} users={users} selectedUserId={selectedUserId} hidden={privacyMode} onClose={() => setAlertsOpen(false)} onChange={setAlerts} onOpenStrategy={id => { setFocusedStrategyId(id); setAlertsOpen(false); setView('strategies'); }}/>}
   </div>;
 }

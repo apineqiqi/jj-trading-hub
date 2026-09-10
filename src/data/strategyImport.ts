@@ -1,10 +1,12 @@
 import type { AlertDirection, DailyWorkflow, PriceAlert, WatchItem, WorkflowPhase } from '../types/market';
+import type { StrategyArtifactLink, StrategyRecord } from '../types/strategy';
 import { taskKey } from './chatTasks.js';
 
 export interface StrategyTask { phase: WorkflowPhase; title: string; detail: string; alert: { symbol: string; name: string; direction: AlertDirection; target: number } | null }
 export interface StrategyPackage { format: 'jj-strategy-v1'; date: string; title: string; tasks: StrategyTask[] }
 export interface StrategySelection { task: boolean; alert: boolean }
 export interface StrategyParseResult { pack: StrategyPackage; normalized: string; repairs: string[] }
+export interface StrategyImportContext { strategyId?: string; importedAt?: string }
 const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const text = (v: unknown): v is string => typeof v === 'string' && !!v.trim();
 const exact = (v: Record<string, unknown>, fields: string[]) => Object.keys(v).every(key => fields.includes(key));
@@ -118,35 +120,50 @@ export function reminderIssue(task: StrategyTask, userId: string, watchlist: Wat
 }
 const priceKey = (a: { userId: string; symbol: string; direction: AlertDirection; target: number }) => JSON.stringify([a.userId, a.symbol, a.direction, a.target]);
 
-export function prepareStrategy(pack: StrategyPackage, selections: StrategySelection[], userId: string, workflows: DailyWorkflow[], alerts: PriceAlert[], watchlist: WatchItem[], today = localDay()) {
+export function prepareStrategy(pack: StrategyPackage, selections: StrategySelection[], userId: string, workflows: DailyWorkflow[], alerts: PriceAlert[], watchlist: WatchItem[], today = localDay(), context: StrategyImportContext = {}) {
   if (pack.date !== today) throw new Error(`策略日期为 ${pack.date}，只允许导入今天 ${today} 的策略；请先重新复核适用日期`);
   if (!userId) throw new Error('请选择具体账户');
   const record = workflows.find(item => item.userId === userId && item.date === today) ?? { id: `${userId}-${today}`, userId, date: today, checks: {}, notes: {}, customTasks: [], updatedAt: '' };
   const tasks = [...(record.customTasks ?? [])]; const nextAlerts = [...alerts];
   const taskKeys = new Set(tasks.map(taskKey)); const alertKeys = new Set(alerts.map(priceKey));
   let addedTasks = 0, addedAlerts = 0, skippedTasks = 0, skippedAlerts = 0;
-  const now = new Date().toISOString();
+  const now = context.importedAt ?? new Date().toISOString();
+  const links: StrategyArtifactLink[] = [];
   pack.tasks.forEach((task, index) => {
     const choice = selections[index];
+    const link: StrategyArtifactLink = {
+      sourceIndex: index,
+      task: { outcome: choice?.task ? 'duplicate' : 'not-selected' },
+      alert: { outcome: !task.alert ? 'not-applicable' : choice?.alert ? 'duplicate' : 'not-selected' },
+    };
     if (choice?.task) {
       const key = taskKey(task);
       if (taskKeys.has(key)) skippedTasks++;
-      else { tasks.push({ id: 'chat-' + crypto.randomUUID(), phase: task.phase, title: task.title, detail: task.detail, sourceTitle: pack.title, importedAt: now }); taskKeys.add(key); addedTasks++; }
+      else {
+        const id = 'chat-' + crypto.randomUUID();
+        tasks.push({ id, phase: task.phase, title: task.title, detail: task.detail, sourceTitle: pack.title, importedAt: now, strategyId: context.strategyId, sourceTaskIndex: context.strategyId ? index : undefined });
+        taskKeys.add(key); addedTasks++; link.task = { outcome: 'created', id };
+      }
     }
     if (choice?.alert && task.alert) {
       const issue = reminderIssue(task, userId, watchlist); if (issue) throw new Error(issue);
       const key = priceKey({ ...task.alert, userId });
       if (alertKeys.has(key)) skippedAlerts++;
-      else { nextAlerts.push({ ...task.alert, id: crypto.randomUUID(), userId, label: `${task.title}：${task.detail}`, sourceTitle: pack.title, enabled: true, acknowledged: false, createdAt: now }); alertKeys.add(key); addedAlerts++; }
+      else {
+        const id = crypto.randomUUID();
+        nextAlerts.push({ ...task.alert, id, userId, label: `${task.title}：${task.detail}`, sourceTitle: pack.title, strategyId: context.strategyId, sourceTaskIndex: context.strategyId ? index : undefined, enabled: true, acknowledged: false, createdAt: now });
+        alertKeys.add(key); addedAlerts++; link.alert = { outcome: 'created', id };
+      }
     }
+    links.push(link);
   });
   const nextRecord = { ...record, customTasks: tasks, updatedAt: now };
-  return { workflows: addedTasks ? workflows.some(item => item.id === record.id) ? workflows.map(item => item.id === record.id ? nextRecord : item) : [...workflows, nextRecord] : workflows, alerts: nextAlerts, addedTasks, addedAlerts, skippedTasks, skippedAlerts };
+  return { workflows: addedTasks ? workflows.some(item => item.id === record.id) ? workflows.map(item => item.id === record.id ? nextRecord : item) : [...workflows, nextRecord] : workflows, alerts: nextAlerts, links, addedTasks, addedAlerts, skippedTasks, skippedAlerts };
 }
 
-// Write both datasets before updating React state; on failure retain the source preview.
-export function persistStrategy(workflows: DailyWorkflow[], alerts: PriceAlert[]) {
-  const entries = [['jj-trading-v07-workflows', JSON.stringify(workflows)], ['jj-trading-v08-alerts', JSON.stringify(alerts)]];
+// Write all three datasets before updating React state; on failure retain the source preview.
+export function persistStrategy(workflows: DailyWorkflow[], alerts: PriceAlert[], strategies: StrategyRecord[]) {
+  const entries = [['jj-trading-v07-workflows', JSON.stringify(workflows)], ['jj-trading-v08-alerts', JSON.stringify(alerts)], ['jj-trading-v16-strategies', JSON.stringify(strategies)]];
   const previous = entries.map(([key]) => [key, localStorage.getItem(key)] as const);
   try { entries.forEach(([key, value]) => localStorage.setItem(key, value)); }
   catch {

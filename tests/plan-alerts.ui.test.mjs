@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const baseUrl = process.env.TEST_BASE_URL || 'http://127.0.0.1:5174/jj-trading-hub/';
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
 const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
 const plan = { id: 'plan-jj', userId: 'user-jj', symbol: '600001', name: '测试计划', entry: 10, stop: 9, target: 12, shares: 100, riskAmount: 100, capital: 1000, rewardRiskRatio: 2, createdAt: '2026-09-08T00:00:00Z' };
@@ -28,7 +29,7 @@ const setup = () => page.getByRole('button', { name: '设置计划提醒', exact
 const confirm = () => page.getByRole('button', { name: '确认生成缺失提醒', exact: true }).click();
 try {
   await mkdir('test-results', { recursive: true });
-  await page.goto('http://127.0.0.1:5174/jj-trading-hub/'); await page.waitForLoadState('networkidle');
+  await page.goto(baseUrl); await page.waitForLoadState('networkidle');
   await risk(); console.log('Risk DOM:', (await page.locator('.risk-plans').innerText()).slice(0, 1000));
   await setup(); await page.getByLabel('入场提醒方向').selectOption('below');
   assert.match(await page.locator('.plan-level-preview').innerText(), /入场 · ≤ 10.00/);

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const baseUrl = process.env.TEST_BASE_URL || 'http://127.0.0.1:5174/jj-trading-hub/';
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
 const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
 await context.addInitScript(() => {
@@ -18,13 +19,13 @@ await context.addInitScript(() => {
 const page = await context.newPage(); const errors = [];
 page.on('pageerror', error => errors.push(error.message));
 await page.route('**/push2delay.eastmoney.com/**', route => route.fulfill({ json: { data: { diff: [] } } }));
-const state = () => page.evaluate(() => ({ workflows: JSON.parse(localStorage.getItem('jj-trading-v07-workflows')), alerts: JSON.parse(localStorage.getItem('jj-trading-v08-alerts')) }));
+const state = () => page.evaluate(() => ({ workflows: JSON.parse(localStorage.getItem('jj-trading-v07-workflows')), alerts: JSON.parse(localStorage.getItem('jj-trading-v08-alerts')), strategies: JSON.parse(localStorage.getItem('jj-trading-v16-strategies') || '[]') }));
 const open = async () => { await page.getByRole('button', { name: /^交易日/ }).click(); await page.getByRole('button', { name: 'AI 策略快导', exact: true }).click(); };
 const check = () => page.getByRole('checkbox', { name: /^我已核对/ }).check();
 const submit = () => page.getByRole('button', { name: '确认导入策略', exact: true }).click();
 try {
   await mkdir('test-results', { recursive: true });
-  await page.goto('http://127.0.0.1:5174/jj-trading-hub/'); await page.waitForLoadState('networkidle');
+  await page.goto(baseUrl); await page.waitForLoadState('networkidle');
   const date = await page.evaluate(() => new Date().toLocaleDateString('sv-SE'));
   const pack = { format: 'jj-strategy-v1', date, title: '测试策略包', tasks: [
     { phase: 'pre', title: '确认策略条件', detail: '未确认的信息仍待确认。', alert: null },
@@ -47,11 +48,14 @@ try {
   assert.equal(await page.getByLabel('启用价格提醒 3', { exact: true }).isDisabled(), true);
   await page.screenshot({ path: 'test-results/v15-desktop.png', fullPage: true });
   await check(); await submit();
-  assert.equal((await state()).workflows[0].customTasks.length, 3); assert.equal((await state()).alerts.length, 0);
+  assert.equal((await state()).workflows[0].customTasks.length, 3); assert.equal((await state()).alerts.length, 0); assert.equal((await state()).strategies.length, 1);
+  assert.equal((await state()).workflows[0].customTasks[0].strategyId, (await state()).strategies[0].id);
+  assert.match((await state()).strategies[0].repairs.join('、'), /中文结构引号.*全角结构标点/);
   await open(); await page.getByLabel('策略 JSON', { exact: true }).fill(raw);
   await page.getByLabel('启用价格提醒 2', { exact: true }).check();
   await check(); await submit();
-  assert.equal((await state()).workflows[0].customTasks.length, 3); assert.equal((await state()).alerts.length, 1);
+  assert.equal((await state()).workflows[0].customTasks.length, 3); assert.equal((await state()).alerts.length, 1); assert.equal((await state()).strategies.length, 2);
+  assert.equal((await state()).alerts[0].strategyId, (await state()).strategies[0].id);
   await page.getByRole('button', { name: '查看提醒中心', exact: true }).click();
   assert.match(await page.locator('.alert-list').innerText(), /AI 策略 · 测试策略包/);
   await page.getByTitle('暂停提醒', { exact: true }).click(); await page.getByRole('button', { name: '关闭提醒中心' }).click();
@@ -63,7 +67,7 @@ try {
   assert.equal(await page.getByLabel('启用价格提醒 2', { exact: true }).isChecked(), false);
   assert.equal(await page.getByRole('checkbox', { name: /^我已核对/ }).isChecked(), false);
   await page.getByLabel('启用价格提醒 2', { exact: true }).check(); await check(); await submit();
-  assert.equal((await state()).workflows.length, 2); assert.equal((await state()).alerts.length, 2);
+  assert.equal((await state()).workflows.length, 2); assert.equal((await state()).alerts.length, 2); assert.equal((await state()).strategies.length, 3);
   await page.reload(); await page.waitForLoadState('networkidle');
   assert.equal((await state()).alerts.length, 2);
   await open(); const before = await state();
@@ -85,7 +89,7 @@ try {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await page.screenshot({ path: 'test-results/v15-mobile.png' });
   await submit();
-  assert.equal((await state()).alerts.length, 3);
+  assert.equal((await state()).alerts.length, 3); assert.equal((await state()).strategies.length, 4);
   assert.deepEqual(errors, []);
-  console.log('PASS V1.5 smart JSON repair, error location, explicit account and alert opt-in, dedupe, sources, isolation, cancel, rollback/retry and mobile');
+  console.log('PASS V1.6 strategy archive plus smart JSON repair, account/alert opt-in, dedupe, isolation, rollback/retry and mobile');
 } finally { await browser.close(); }

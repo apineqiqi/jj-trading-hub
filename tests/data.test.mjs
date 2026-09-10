@@ -4,6 +4,7 @@ import { extractTasks, parseExport, taskKey } from '../.test-build/data/chatTask
 import { parseBackup, restoreBackup } from '../.test-build/data/backup.js';
 import { createPlanAlerts, linkedToPlan } from '../.test-build/data/planAlerts.js';
 import { parseStrategy, parseStrategyInput, prepareStrategy, persistStrategy, reminderIssue } from '../.test-build/data/strategyImport.js';
+import { createStrategyRecord } from '../.test-build/data/strategyRecords.js';
 
 const strategy = { format: 'jj-strategy-v1', date: '2026-09-08', title: '策略测试', tasks: [
   { phase: 'pre', title: '核对条件', detail: '等待确认，不自行补价格。', alert: null },
@@ -29,9 +30,14 @@ test('strategy parser repairs smart JSON boundaries without changing quoted Chin
 });
 test('strategy import separates opt-in alerts and tasks and preserves paused duplicate rules', () => {
   const choices = [{ task: true, alert: false }, { task: true, alert: true }];
-  const first = prepareStrategy(strategy, choices, 'jj', [], [], strategyWatch, strategy.date);
+  const first = prepareStrategy(strategy, choices, 'jj', [], [], strategyWatch, strategy.date, { strategyId: 'strategy-1', importedAt: '2026-09-08T01:02:03Z' });
   assert.equal(first.addedTasks, 2); assert.equal(first.addedAlerts, 1);
   assert.equal(first.workflows[0].customTasks[1].detail, strategy.tasks[1].detail);
+  assert.deepEqual(first.links.map(link => [link.task.outcome, link.alert.outcome]), [['created', 'not-applicable'], ['created', 'created']]);
+  assert.equal(first.workflows[0].customTasks[0].strategyId, 'strategy-1');
+  assert.equal(first.workflows[0].customTasks[1].sourceTaskIndex, 1);
+  assert.equal(first.alerts[0].strategyId, 'strategy-1');
+  assert.equal(first.alerts[0].sourceTaskIndex, 1);
   first.alerts[0].enabled = false;
   const second = prepareStrategy(strategy, choices, 'jj', first.workflows, first.alerts, strategyWatch, strategy.date);
   assert.equal(second.addedTasks + second.addedAlerts, 0);
@@ -45,19 +51,30 @@ test('strategy import separates opt-in alerts and tasks and preserves paused dup
   assert.match(reminderIssue(strategy.tasks[1], 'jj', [{ ...strategyWatch[0], name: '不匹配' }]), /不一致/);
 });
 test('strategy multi-key storage failure rolls back instead of importing half a package', () => {
-  const state = new Map([['jj-trading-v07-workflows', 'old-workflows'], ['jj-trading-v08-alerts', 'old-alerts']]);
-  let writes = 0;
-  globalThis.localStorage = { getItem: k => state.get(k) ?? null, setItem: (k, v) => { if (++writes === 2) throw new Error('quota'); state.set(k, v); }, removeItem: k => state.delete(k) };
-  assert.throws(() => persistStrategy([], []), /已回退/);
-  assert.equal(state.get('jj-trading-v07-workflows'), 'old-workflows');
-  assert.equal(state.get('jj-trading-v08-alerts'), 'old-alerts');
+  const initial = new Map([['jj-trading-v07-workflows', 'old-workflows'], ['jj-trading-v08-alerts', 'old-alerts'], ['jj-trading-v16-strategies', 'old-strategies']]);
+  for (const failAt of [1, 2, 3]) {
+    const state = new Map(initial); let writes = 0;
+    globalThis.localStorage = { getItem: k => state.get(k) ?? null, setItem: (k, v) => { if (++writes === failAt) throw new Error('quota'); state.set(k, v); }, removeItem: k => state.delete(k) };
+    assert.throws(() => persistStrategy([], [], []), /已回退/);
+    assert.deepEqual(state, initial);
+  }
 });
-test('V1.5 backup roundtrip retains strategy provenance and remains compatible with older versions', () => {
+test('V1.6 strategy record keeps an immutable snapshot and backup validates bidirectional provenance', () => {
   const data = fixture();
-  const result = prepareStrategy(strategy, [{ task: true, alert: false }, { task: true, alert: true }], 'jj', [], [], strategyWatch, strategy.date);
+  const selections = [{ task: true, alert: false }, { task: true, alert: true }];
+  const result = prepareStrategy(strategy, selections, 'jj', [], [], strategyWatch, strategy.date, { strategyId: 'strategy-1', importedAt: '2026-09-08T01:02:03Z' });
+  const record = createStrategyRecord({ id: 'strategy-1', userId: 'jj', importedAt: '2026-09-08T01:02:03Z', pack: strategy, links: result.links, repairs: ['2 个中文结构引号'] });
   data['jj-trading-v07-workflows'] = result.workflows; data['jj-trading-v08-alerts'] = result.alerts;
-  assert.deepEqual(parseBackup(JSON.stringify({ app: 'jj-trading-hub', version: 14, createdAt: '2026-09-08T00:00:00Z', data })).data, data);
-  assert.deepEqual(parseBackup(JSON.stringify({ app: 'jj-trading-hub', version: 15, createdAt: '2026-09-09T00:00:00Z', data })).data, data);
+  data['jj-trading-v16-strategies'] = [record];
+  result.workflows[0].customTasks[0].title = '用户编辑后的标题';
+  assert.equal(record.snapshot.tasks[0].title, '核对条件');
+  assert.deepEqual(parseBackup(JSON.stringify({ app: 'jj-trading-hub', version: 16, createdAt: '2026-09-08T00:00:00Z', data })).data, data);
+  const orphan = structuredClone(data); orphan['jj-trading-v07-workflows'][0].customTasks[0].strategyId = 'missing';
+  assert.throws(() => parseBackup(JSON.stringify({ app: 'jj-trading-hub', version: 16, createdAt: '2026-09-08T00:00:00Z', data: orphan })), /策略任务/);
+  const crossAccount = structuredClone(data); crossAccount['jj-trading-v06-users'].push({ id: 'alice', name: 'Alice', color: '#aaa' }); crossAccount['jj-trading-v16-strategies'][0].userId = 'alice';
+  assert.throws(() => parseBackup(JSON.stringify({ app: 'jj-trading-hub', version: 16, createdAt: '2026-09-08T00:00:00Z', data: crossAccount })), /策略任务/);
+  const duplicate = structuredClone(data); duplicate['jj-trading-v16-strategies'].push(structuredClone(record));
+  assert.throws(() => parseBackup(JSON.stringify({ app: 'jj-trading-hub', version: 16, createdAt: '2026-09-08T00:00:00Z', data: duplicate })), /重复记录编号/);
 });
 
 const plan = { id: 'plan1', userId: 'jj', symbol: '600001', name: '测试', entry: 10, stop: 9, target: 12, shares: 100, riskAmount: 100, capital: 1000, rewardRiskRatio: 2, createdAt: '2026-09-08T00:00:00Z' };
@@ -106,12 +123,18 @@ test('short numbered action lines are not mistaken for phase headings', () => {
   assert.equal(taskKey({ phase: 'pre', title: '检查风险', detail: '' }), taskKey({ phase: 'pre', title: '检查风险', detail: '来自 ChatGPT 对话，执行前请复核条件与风险边界。' }));
 });
 function fixture() {
-  return { 'jj-trading-v06-users': [{ id: 'jj', name: 'JJ', color: '#fff' }], 'jj-trading-v06-active-user': 'jj', 'jj-trading-v06-positions': [], 'jj-trading-v06-watchlist': [], 'jj-trading-v04-snapshots': [{ id: 'legacy', date: '2026-09-03', totalAssets: 100, marketValue: 80, cash: 20, unrealizedPnl: 0 }], 'jj-trading-v04-trades': [], 'jj-trading-privacy-mode': false, 'jj-trading-v07-workflows': [], 'jj-trading-v08-alerts': [], 'jj-trading-v09-visual-reviews': [], 'jj-trading-v10-risk-profiles': [], 'jj-trading-v10-risk-plans': [], 'jj-trading-v12-cash': { jj: 20 } };
+  return { 'jj-trading-v06-users': [{ id: 'jj', name: 'JJ', color: '#fff' }], 'jj-trading-v06-active-user': 'jj', 'jj-trading-v06-positions': [], 'jj-trading-v06-watchlist': [], 'jj-trading-v04-snapshots': [{ id: 'legacy', date: '2026-09-03', totalAssets: 100, marketValue: 80, cash: 20, unrealizedPnl: 0 }], 'jj-trading-v04-trades': [], 'jj-trading-privacy-mode': false, 'jj-trading-v07-workflows': [], 'jj-trading-v08-alerts': [], 'jj-trading-v09-visual-reviews': [], 'jj-trading-v10-risk-profiles': [], 'jj-trading-v10-risk-plans': [], 'jj-trading-v12-cash': { jj: 20 }, 'jj-trading-v16-strategies': [] };
 }
 const wrap = data => JSON.stringify({ app: 'jj-trading-hub', version: 12, createdAt: '2026-09-08T00:00:00Z', data });
 test('backup roundtrip preserves legacy records and rejects incomplete or foreign records', () => {
   const data = fixture();
   assert.deepEqual(parseBackup(wrap(data)).data, data);
+  for (const version of [12, 13, 14, 15]) {
+    const legacy = fixture(); delete legacy['jj-trading-v16-strategies'];
+    assert.deepEqual(parseBackup(JSON.stringify({ app: 'jj-trading-hub', version, createdAt: '2026-09-08T00:00:00Z', data: legacy })).data['jj-trading-v16-strategies'], []);
+  }
+  const incompleteV16 = fixture(); delete incompleteV16['jj-trading-v16-strategies'];
+  assert.throws(() => parseBackup(JSON.stringify({ app: 'jj-trading-hub', version: 16, createdAt: '2026-09-08T00:00:00Z', data: incompleteV16 })));
   assert.throws(() => parseBackup(wrap({ ...data, 'jj-trading-v04-trades': [{ userId: 'missing' }] })));
   delete data['jj-trading-v12-cash'];
   assert.throws(() => parseBackup(wrap(data)));

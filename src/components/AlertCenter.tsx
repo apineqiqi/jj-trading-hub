@@ -4,7 +4,7 @@ import type { AlertDirection, PriceAlert, UserProfile, WatchItem } from '../type
 
 const isTriggered = (rule: PriceAlert, price?: number) => price !== undefined && rule.enabled && (rule.direction === 'above' ? price >= rule.target : price <= rule.target);
 
-export function AlertCenter({ alerts, watchlist, users, selectedUserId, hidden, onClose, onChange }: {
+export function AlertCenter({ alerts, watchlist, users, selectedUserId, hidden, onClose, onChange, onOpenStrategy }: {
   alerts: PriceAlert[];
   watchlist: WatchItem[];
   users: UserProfile[];
@@ -12,6 +12,7 @@ export function AlertCenter({ alerts, watchlist, users, selectedUserId, hidden, 
   hidden: boolean;
   onClose: () => void;
   onChange: (alerts: PriceAlert[]) => void;
+  onOpenStrategy: (strategyId: string) => void;
 }) {
   const activeUsers = users.filter(user => !user.archived);
   const defaultUserId = selectedUserId === 'all' ? activeUsers[0]?.id ?? 'user-jj' : selectedUserId;
@@ -65,7 +66,7 @@ export function AlertCenter({ alerts, watchlist, users, selectedUserId, hidden, 
           const hit = isTriggered(rule, item?.price);
           return <article className={`${hit ? 'triggered' : ''} ${!rule.enabled ? 'paused' : ''}`} key={rule.id}>
             <div className="alert-status">{hit ? <BellRingIcon size={17}/> : rule.enabled ? <ChevronDown size={17}/> : <Pause size={16}/>}<i/></div>
-            <div className="alert-copy"><div><b>{hidden ? '观察标的' : rule.name}</b><em>{userMap.get(rule.userId)?.name ?? 'JJ'}</em><span>{rule.direction === 'above' ? '达到或高于' : '达到或低于'} {hidden ? '••••' : rule.target.toFixed(2)}</span></div>{rule.planId && <strong className="plan-source-badge">计划关联 · {rule.planLevel === 'entry' ? '入场' : rule.planLevel === 'stop' ? '止损' : '目标'}</strong>}<p>{rule.sourceTitle && <span className="plan-source-badge">{hidden ? 'AI 策略来源已隐藏' : `AI 策略 · ${rule.sourceTitle}`}<br/></span>}{hidden ? '提醒说明已隐藏' : rule.label}</p><small>现价 {hidden ? '••••' : item?.price.toFixed(2) ?? '—'} · {!item ? '缺少观察池标的，无法核对行情' : rule.enabled ? hit ? rule.acknowledged ? '条件已命中 · 已知悉' : '条件已命中' : '等待价格进入边界' : '监控已暂停'}</small></div>
+            <div className="alert-copy"><div><b>{hidden ? '观察标的' : rule.name}</b><em>{userMap.get(rule.userId)?.name ?? 'JJ'}</em><span>{rule.direction === 'above' ? '达到或高于' : '达到或低于'} {hidden ? '••••' : rule.target.toFixed(2)}</span></div>{rule.planId && <strong className="plan-source-badge">计划关联 · {rule.planLevel === 'entry' ? '入场' : rule.planLevel === 'stop' ? '止损' : '目标'}</strong>}<p>{rule.sourceTitle && (rule.strategyId ? <button type="button" className="plan-source-badge strategy-source-link" aria-label={`查看策略来源 ${hidden ? '' : rule.sourceTitle}`} onClick={() => onOpenStrategy(rule.strategyId!)}>{hidden ? 'AI 策略来源已隐藏' : `AI 策略 · ${rule.sourceTitle}`}</button> : <span className="plan-source-badge">{hidden ? 'AI 策略来源已隐藏' : `旧版 AI 来源 · ${rule.sourceTitle}`}</span>)}{rule.sourceTitle && <br/>}{hidden ? '提醒说明已隐藏' : rule.label}</p><small>现价 {hidden ? '••••' : item?.price.toFixed(2) ?? '—'} · {!item ? '缺少观察池标的，无法核对行情' : rule.enabled ? hit ? rule.acknowledged ? '条件已命中 · 已知悉' : '条件已命中' : '等待价格进入边界' : '监控已暂停'}</small></div>
             <div className="alert-actions">{hit && !rule.acknowledged && <button title="确认已知悉" onClick={() => updateRule(rule.id, { acknowledged: true })}><Check size={15}/></button>}<button title={rule.enabled ? '暂停提醒' : '恢复提醒'} onClick={() => updateRule(rule.id, { enabled: !rule.enabled, acknowledged: false })}>{rule.enabled ? <Pause size={14}/> : <Play size={14}/>}</button><button title="删除提醒" onClick={() => window.confirm(`删除 ${rule.name} 的这条提醒？`) && onChange(alerts.filter(item => item.id !== rule.id))}><Trash2 size={14}/></button></div>
           </article>;
         }) : <div className="alert-empty"><CircleAlert size={30}/><b>{filter === 'hit' ? '当前没有命中条件' : '还没有条件提醒'}</b><span>{filter === 'hit' ? '价格进入设定边界后会出现在这里。' : '从观察池选择标的，设置上穿或下破价格。'}</span></div>}

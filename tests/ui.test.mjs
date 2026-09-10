@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdir, readFile } from 'node:fs/promises';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const baseUrl = process.env.TEST_BASE_URL || 'http://127.0.0.1:5174/jj-trading-hub/';
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
 const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
 const errors = [];
@@ -24,9 +25,9 @@ const openData = () => page.getByRole('button', { name: '资金与备份', exact
 const selectUser = id => page.getByRole('combobox', { name: '账户视角' }).selectOption(id);
 try {
   await mkdir('test-results', { recursive: true });
-  await page.goto('http://127.0.0.1:5174/jj-trading-hub/');
+  await page.goto(baseUrl);
   await page.waitForLoadState('networkidle');
-  assert.match(await page.locator('body').innerText(), /V1.5/);
+  assert.match(await page.locator('body').innerText(), /V1.6/);
   await openData();
   await page.getByLabel('Alice可用现金').fill('2000');
   await page.getByRole('button', { name: '保存账户现金' }).click();
@@ -80,6 +81,7 @@ try {
   await page.getByRole('button', { name: '导出完整备份', exact: true }).click();
   const download = await downloading; await download.saveAs('test-results/backup.json');
   const exported = JSON.parse(await readFile('test-results/backup.json', 'utf8'));
+  assert.equal(exported.version, 16);
   assert.deepEqual(exported.data, state);
   await page.getByLabel('选择恢复文件', { exact: true }).setInputFiles({ name: 'invalid.json', mimeType: 'application/json', buffer: Buffer.from('{"app":"jj-trading-hub"}') });
   assert.match(await page.getByRole('alert').innerText(), /完整备份/);

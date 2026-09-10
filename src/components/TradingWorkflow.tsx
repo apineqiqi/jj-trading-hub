@@ -35,6 +35,7 @@ const isImportedTask = (task: { id: string; title: string; detail: string } | Wo
 
 interface Props {
   onImportStrategy: () => void;
+  onOpenStrategy: (strategyId: string) => void;
   record: DailyWorkflow;
   ownerName: string;
   positions: number;
@@ -46,7 +47,7 @@ interface Props {
   onChange: (record: DailyWorkflow) => void;
 }
 
-export function TradingWorkflow({ record, ownerName, positions, attackSignals, positionPct, portfolioLimit, cashKnown, hidden, onChange, onImportStrategy }: Props) {
+export function TradingWorkflow({ record, ownerName, positions, attackSignals, positionPct, portfolioLimit, cashKnown, hidden, onChange, onImportStrategy, onOpenStrategy }: Props) {
   const [activePhase, setActivePhase] = useState<WorkflowPhase>(phaseForNow());
   const [importing, setImporting] = useState(false);
   const [editing, setEditing] = useState<WorkflowTask | null>(null);
@@ -69,7 +70,7 @@ export function TradingWorkflow({ record, ownerName, positions, attackSignals, p
   };
   const clearImported = () => {
     const imported = customTasks.filter(item => item.phase === activePhase);
-    if (!imported.length || !window.confirm(`移除${active.label}阶段从 ChatGPT 导入的 ${imported.length} 项任务？`)) return;
+    if (!imported.length || !window.confirm(`移除${active.label}阶段导入的 ${imported.length} 项任务？策略中心的来源快照仍会保留。`)) return;
     const removedIds = new Set(imported.map(item => item.id));
     update({ customTasks: customTasks.filter(item => item.phase !== activePhase), checks: Object.fromEntries(Object.entries(record.checks).filter(([id]) => !removedIds.has(id))) });
   };
@@ -108,8 +109,8 @@ export function TradingWorkflow({ record, ownerName, positions, attackSignals, p
         <div className="task-list">
           {activeTasks.map(task => <div className="workflow-task-row" key={task.id}><button className={record.checks[task.id] ? 'done' : ''} onClick={() => toggle(task.id)}>
             <span className="task-check">{record.checks[task.id] ? <Check size={16}/> : <Circle size={16}/>}</span>
-            <span><b>{task.title}{isImportedTask(task) && task.sourceTitle && <em className="chat-task-badge">CHATGPT</em>}</b><small>{task.detail}</small>{isImportedTask(task) && task.sourceTitle && <small className="chat-task-source">来自：{task.sourceTitle}</small>}</span><ChevronRight size={15}/>
-          </button>{isImportedTask(task) && <div className="task-row-actions"><button onClick={() => { setEditing({ ...task }); setTaskError(''); }}>编辑任务</button><button onClick={() => { if (!window.confirm('删除这条任务？')) return; const checks = { ...record.checks }; delete checks[task.id]; update({ customTasks: customTasks.filter(item => item.id !== task.id), checks }); }}>删除任务</button></div>}</div>)}
+            <span><b>{task.title}{isImportedTask(task) && task.sourceTitle && <em className="chat-task-badge">{task.strategyId ? 'AI STRATEGY' : 'CHATGPT'}</em>}</b><small>{task.detail}</small>{isImportedTask(task) && task.sourceTitle && <small className="chat-task-source">来自：{task.sourceTitle}</small>}</span><ChevronRight size={15}/>
+          </button>{isImportedTask(task) && <div className="task-row-actions">{task.strategyId && <button onClick={() => onOpenStrategy(task.strategyId!)}>查看策略来源</button>}<button onClick={() => { setEditing({ ...task }); setTaskError(''); }}>编辑任务</button><button onClick={() => { if (!window.confirm('删除这条任务？策略中心仍会保留原始快照和移除状态。')) return; const checks = { ...record.checks }; delete checks[task.id]; update({ customTasks: customTasks.filter(item => item.id !== task.id), checks }); }}>删除任务</button></div>}</div>)}
         </div>
         {customTasks.some(item => item.phase === activePhase) && <button className="clear-chat-tasks" onClick={clearImported}><Trash2 size={13}/>移除本阶段导入任务</button>}
         <label className="phase-note"><span>阶段记录</span><textarea value={record.notes[activePhase] ?? ''} onChange={event => update({ notes: { ...record.notes, [activePhase]: event.target.value } })} placeholder={`${active.label}发生了什么？记录事实、偏差和下一步。`}/></label>

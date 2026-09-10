@@ -1,6 +1,7 @@
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import os
 
 class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
@@ -10,4 +11,5 @@ class Handler(SimpleHTTPRequestHandler):
 
 if __name__ == '__main__':
     root = Path(__file__).resolve().parents[1] / 'dist'
-    ThreadingHTTPServer(('127.0.0.1', 5174), partial(Handler, directory=str(root))).serve_forever()
+    port = int(os.environ.get('PORT', '5174'))
+    ThreadingHTTPServer(('127.0.0.1', port), partial(Handler, directory=str(root))).serve_forever()

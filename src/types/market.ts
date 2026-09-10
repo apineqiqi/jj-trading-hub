@@ -90,6 +90,8 @@ export interface WorkflowTask {
   detail: string;
   sourceTitle?: string;
   importedAt?: string;
+  strategyId?: string;
+  sourceTaskIndex?: number;
 }
 
 export interface DailyWorkflow {
@@ -106,6 +108,8 @@ export type AlertDirection = 'above' | 'below';
 
 export interface PriceAlert {
   sourceTitle?: string;
+  strategyId?: string;
+  sourceTaskIndex?: number;
   planId?: string;
   planLevel?: 'entry' | 'stop' | 'target';
   id: string;
